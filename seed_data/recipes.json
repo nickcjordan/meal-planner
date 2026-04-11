@@ -1,0 +1,1220 @@
+[
+  {
+    "id": "seed-001",
+    "name": "Chicken Tikka Masala",
+    "description": "Tender chicken pieces in a creamy, spiced tomato sauce. A family favorite that's rich and comforting.",
+    "ingredients": [
+      {
+        "name": "chicken breast",
+        "quantity": 2,
+        "unit": "lbs",
+        "category": "meat"
+      },
+      {
+        "name": "plain yogurt",
+        "quantity": 1,
+        "unit": "cup",
+        "category": "dairy"
+      },
+      {
+        "name": "garam masala",
+        "quantity": 2,
+        "unit": "tbsp",
+        "category": "spices"
+      },
+      {
+        "name": "cumin",
+        "quantity": 1,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "turmeric",
+        "quantity": 1,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "crushed tomatoes",
+        "quantity": 28,
+        "unit": "oz",
+        "category": "canned"
+      },
+      {
+        "name": "heavy cream",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "dairy"
+      },
+      {
+        "name": "onion",
+        "quantity": 1,
+        "unit": "large",
+        "category": "produce"
+      },
+      {
+        "name": "garlic",
+        "quantity": 4,
+        "unit": "cloves",
+        "category": "produce"
+      },
+      {
+        "name": "ginger",
+        "quantity": 1,
+        "unit": "tbsp",
+        "category": "produce"
+      },
+      {
+        "name": "butter",
+        "quantity": 2,
+        "unit": "tbsp",
+        "category": "dairy"
+      }
+    ],
+    "steps": [
+      "Cut chicken into bite-sized pieces and marinate in yogurt, garam masala, cumin, and turmeric for at least 30 minutes.",
+      "Melt butter in a large skillet over medium-high heat. Cook chicken pieces until browned, about 5 minutes per side. Remove and set aside.",
+      "In the same pan, sauté diced onion until soft. Add minced garlic and ginger, cook 1 minute.",
+      "Add crushed tomatoes and remaining spices. Simmer 15 minutes.",
+      "Return chicken to the sauce. Stir in heavy cream and simmer 10 more minutes.",
+      "Serve over basmati rice with naan bread."
+    ],
+    "cookTime": 45,
+    "prepTime": 40,
+    "servings": 4,
+    "tags": [
+      "indian",
+      "curry",
+      "chicken",
+      "comfort-food"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "involved"
+  },
+  {
+    "id": "seed-002",
+    "name": "Classic Beef Tacos",
+    "description": "Simple and satisfying ground beef tacos with fresh toppings. A quick weeknight dinner.",
+    "ingredients": [
+      {
+        "name": "ground beef",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "meat"
+      },
+      {
+        "name": "taco seasoning",
+        "quantity": 1,
+        "unit": "packet",
+        "category": "spices"
+      },
+      {
+        "name": "taco shells",
+        "quantity": 12,
+        "unit": "shells",
+        "category": "bread"
+      },
+      {
+        "name": "shredded lettuce",
+        "quantity": 2,
+        "unit": "cups",
+        "category": "produce"
+      },
+      {
+        "name": "tomato",
+        "quantity": 2,
+        "unit": "medium",
+        "category": "produce"
+      },
+      {
+        "name": "shredded cheddar cheese",
+        "quantity": 1,
+        "unit": "cup",
+        "category": "dairy"
+      },
+      {
+        "name": "sour cream",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "dairy"
+      },
+      {
+        "name": "salsa",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "condiments"
+      }
+    ],
+    "steps": [
+      "Brown ground beef in a skillet over medium-high heat, breaking it up as it cooks.",
+      "Drain excess fat. Add taco seasoning and water per packet instructions. Simmer 5 minutes.",
+      "Warm taco shells according to package directions.",
+      "Dice tomatoes and prepare toppings.",
+      "Assemble tacos with seasoned beef and desired toppings."
+    ],
+    "cookTime": 15,
+    "prepTime": 10,
+    "servings": 4,
+    "tags": [
+      "mexican",
+      "quick",
+      "beef",
+      "weeknight"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "standard"
+  },
+  {
+    "id": "seed-003",
+    "name": "Garlic Butter Salmon",
+    "description": "Pan-seared salmon fillets with a simple garlic butter sauce. Elegant enough for company, easy enough for Tuesday.",
+    "ingredients": [
+      {
+        "name": "salmon fillets",
+        "quantity": 4,
+        "unit": "6-oz",
+        "category": "seafood"
+      },
+      {
+        "name": "butter",
+        "quantity": 3,
+        "unit": "tbsp",
+        "category": "dairy"
+      },
+      {
+        "name": "garlic",
+        "quantity": 4,
+        "unit": "cloves",
+        "category": "produce"
+      },
+      {
+        "name": "lemon",
+        "quantity": 1,
+        "unit": "whole",
+        "category": "produce"
+      },
+      {
+        "name": "fresh parsley",
+        "quantity": 2,
+        "unit": "tbsp",
+        "category": "produce"
+      },
+      {
+        "name": "asparagus",
+        "quantity": 1,
+        "unit": "bunch",
+        "category": "produce"
+      }
+    ],
+    "steps": [
+      "Pat salmon dry and season with salt and pepper.",
+      "Heat 1 tbsp butter in a large skillet over medium-high heat.",
+      "Place salmon skin-side up and cook 4 minutes until golden. Flip and cook 3 more minutes.",
+      "Add remaining butter and minced garlic to the pan. Baste salmon with garlic butter for 1 minute.",
+      "Squeeze lemon juice over salmon and garnish with parsley.",
+      "Serve with roasted asparagus."
+    ],
+    "cookTime": 15,
+    "prepTime": 10,
+    "servings": 4,
+    "tags": [
+      "seafood",
+      "healthy",
+      "quick",
+      "low-carb"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "standard"
+  },
+  {
+    "id": "seed-004",
+    "name": "Spaghetti Bolognese",
+    "description": "A rich, slow-simmered meat sauce over pasta. The longer it simmers, the better it gets.",
+    "ingredients": [
+      {
+        "name": "spaghetti",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "pasta"
+      },
+      {
+        "name": "ground beef",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "meat"
+      },
+      {
+        "name": "Italian sausage",
+        "quantity": 0.5,
+        "unit": "lb",
+        "category": "meat"
+      },
+      {
+        "name": "crushed tomatoes",
+        "quantity": 28,
+        "unit": "oz",
+        "category": "canned"
+      },
+      {
+        "name": "tomato paste",
+        "quantity": 2,
+        "unit": "tbsp",
+        "category": "canned"
+      },
+      {
+        "name": "onion",
+        "quantity": 1,
+        "unit": "medium",
+        "category": "produce"
+      },
+      {
+        "name": "carrot",
+        "quantity": 1,
+        "unit": "medium",
+        "category": "produce"
+      },
+      {
+        "name": "celery",
+        "quantity": 2,
+        "unit": "stalks",
+        "category": "produce"
+      },
+      {
+        "name": "garlic",
+        "quantity": 3,
+        "unit": "cloves",
+        "category": "produce"
+      },
+      {
+        "name": "red wine",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "pantry"
+      },
+      {
+        "name": "dried oregano",
+        "quantity": 1,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "dried basil",
+        "quantity": 1,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "parmesan cheese",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "dairy"
+      }
+    ],
+    "steps": [
+      "Finely dice onion, carrot, and celery (mirepoix). Mince garlic.",
+      "Brown ground beef and sausage in a large pot. Drain excess fat.",
+      "Add mirepoix and cook until softened, about 5 minutes. Add garlic, cook 1 minute.",
+      "Pour in red wine and scrape up browned bits. Cook until mostly evaporated.",
+      "Add crushed tomatoes, tomato paste, oregano, and basil. Season with salt and pepper.",
+      "Simmer on low for at least 30 minutes (up to 2 hours for best flavor).",
+      "Cook spaghetti according to package directions. Serve sauce over pasta with grated parmesan."
+    ],
+    "cookTime": 45,
+    "prepTime": 20,
+    "servings": 6,
+    "tags": [
+      "italian",
+      "pasta",
+      "beef",
+      "comfort-food"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "involved"
+  },
+  {
+    "id": "seed-005",
+    "name": "Sheet Pan Chicken Fajitas",
+    "description": "Colorful peppers and seasoned chicken roasted together on one pan. Minimal cleanup, maximum flavor.",
+    "ingredients": [
+      {
+        "name": "chicken breast",
+        "quantity": 1.5,
+        "unit": "lbs",
+        "category": "meat"
+      },
+      {
+        "name": "bell peppers",
+        "quantity": 3,
+        "unit": "medium",
+        "category": "produce"
+      },
+      {
+        "name": "onion",
+        "quantity": 1,
+        "unit": "large",
+        "category": "produce"
+      },
+      {
+        "name": "chili powder",
+        "quantity": 2,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "cumin",
+        "quantity": 1,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "paprika",
+        "quantity": 1,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "lime",
+        "quantity": 2,
+        "unit": "whole",
+        "category": "produce"
+      },
+      {
+        "name": "olive oil",
+        "quantity": 2,
+        "unit": "tbsp",
+        "category": "pantry"
+      },
+      {
+        "name": "flour tortillas",
+        "quantity": 8,
+        "unit": "tortillas",
+        "category": "bread"
+      },
+      {
+        "name": "sour cream",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "dairy"
+      },
+      {
+        "name": "guacamole",
+        "quantity": 1,
+        "unit": "cup",
+        "category": "condiments"
+      }
+    ],
+    "steps": [
+      "Preheat oven to 425°F. Line a sheet pan with foil.",
+      "Slice chicken into strips. Slice peppers and onion.",
+      "Toss everything with olive oil, chili powder, cumin, paprika, salt, and pepper.",
+      "Spread in a single layer on the sheet pan.",
+      "Roast 20-25 minutes until chicken is cooked through and veggies are charred.",
+      "Squeeze lime juice over everything. Serve in warm tortillas with sour cream and guacamole."
+    ],
+    "cookTime": 25,
+    "prepTime": 15,
+    "servings": 4,
+    "tags": [
+      "mexican",
+      "sheet-pan",
+      "chicken",
+      "easy"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "standard"
+  },
+  {
+    "id": "seed-006",
+    "name": "Creamy Tuscan Chicken",
+    "description": "Pan-seared chicken in a sun-dried tomato and spinach cream sauce. Restaurant-quality in 30 minutes.",
+    "ingredients": [
+      {
+        "name": "chicken breast",
+        "quantity": 4,
+        "unit": "pieces",
+        "category": "meat"
+      },
+      {
+        "name": "sun-dried tomatoes",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "pantry"
+      },
+      {
+        "name": "baby spinach",
+        "quantity": 3,
+        "unit": "cups",
+        "category": "produce"
+      },
+      {
+        "name": "heavy cream",
+        "quantity": 0.75,
+        "unit": "cup",
+        "category": "dairy"
+      },
+      {
+        "name": "parmesan cheese",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "dairy"
+      },
+      {
+        "name": "garlic",
+        "quantity": 3,
+        "unit": "cloves",
+        "category": "produce"
+      },
+      {
+        "name": "Italian seasoning",
+        "quantity": 1,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "olive oil",
+        "quantity": 2,
+        "unit": "tbsp",
+        "category": "pantry"
+      }
+    ],
+    "steps": [
+      "Season chicken breasts with Italian seasoning, salt, and pepper.",
+      "Heat olive oil in a large skillet over medium-high heat. Cook chicken 6-7 minutes per side until golden and cooked through. Remove and set aside.",
+      "In the same pan, add garlic and sun-dried tomatoes. Cook 1 minute.",
+      "Pour in heavy cream and parmesan. Stir until sauce thickens, about 3 minutes.",
+      "Add spinach and cook until wilted.",
+      "Return chicken to the pan and spoon sauce over it. Serve with pasta or crusty bread."
+    ],
+    "cookTime": 25,
+    "prepTime": 10,
+    "servings": 4,
+    "tags": [
+      "italian",
+      "chicken",
+      "creamy",
+      "quick"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "standard"
+  },
+  {
+    "id": "seed-007",
+    "name": "Beef Stir-Fry with Broccoli",
+    "description": "Quick-cooking beef and crisp broccoli in a savory sauce. Better than takeout.",
+    "ingredients": [
+      {
+        "name": "flank steak",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "meat"
+      },
+      {
+        "name": "broccoli florets",
+        "quantity": 4,
+        "unit": "cups",
+        "category": "produce"
+      },
+      {
+        "name": "soy sauce",
+        "quantity": 3,
+        "unit": "tbsp",
+        "category": "condiments"
+      },
+      {
+        "name": "sesame oil",
+        "quantity": 1,
+        "unit": "tbsp",
+        "category": "condiments"
+      },
+      {
+        "name": "cornstarch",
+        "quantity": 1,
+        "unit": "tbsp",
+        "category": "pantry"
+      },
+      {
+        "name": "garlic",
+        "quantity": 3,
+        "unit": "cloves",
+        "category": "produce"
+      },
+      {
+        "name": "ginger",
+        "quantity": 1,
+        "unit": "tbsp",
+        "category": "produce"
+      },
+      {
+        "name": "brown sugar",
+        "quantity": 1,
+        "unit": "tbsp",
+        "category": "pantry"
+      },
+      {
+        "name": "rice",
+        "quantity": 2,
+        "unit": "cups",
+        "category": "pantry"
+      },
+      {
+        "name": "vegetable oil",
+        "quantity": 2,
+        "unit": "tbsp",
+        "category": "pantry"
+      }
+    ],
+    "steps": [
+      "Slice flank steak thinly against the grain. Toss with 1 tbsp soy sauce and cornstarch.",
+      "Mix remaining soy sauce, sesame oil, brown sugar, and 2 tbsp water for the sauce.",
+      "Heat vegetable oil in a wok or large skillet over high heat.",
+      "Stir-fry beef in batches, 2 minutes per batch. Remove and set aside.",
+      "Add broccoli to the wok. Cook 3-4 minutes until bright green and crisp-tender.",
+      "Add garlic and ginger, cook 30 seconds. Return beef to wok.",
+      "Pour sauce over everything. Toss to coat and cook 1 minute until glossy.",
+      "Serve over steamed rice."
+    ],
+    "cookTime": 15,
+    "prepTime": 15,
+    "servings": 4,
+    "tags": [
+      "asian",
+      "stir-fry",
+      "beef",
+      "quick"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "standard"
+  },
+  {
+    "id": "seed-008",
+    "name": "Baked Ziti",
+    "description": "Layers of pasta, ricotta, and mozzarella in a meaty tomato sauce. Comfort food at its best.",
+    "ingredients": [
+      {
+        "name": "ziti pasta",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "pasta"
+      },
+      {
+        "name": "Italian sausage",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "meat"
+      },
+      {
+        "name": "marinara sauce",
+        "quantity": 24,
+        "unit": "oz",
+        "category": "canned"
+      },
+      {
+        "name": "ricotta cheese",
+        "quantity": 15,
+        "unit": "oz",
+        "category": "dairy"
+      },
+      {
+        "name": "mozzarella cheese",
+        "quantity": 2,
+        "unit": "cups",
+        "category": "dairy"
+      },
+      {
+        "name": "parmesan cheese",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "dairy"
+      },
+      {
+        "name": "egg",
+        "quantity": 1,
+        "unit": "large",
+        "category": "dairy"
+      },
+      {
+        "name": "fresh basil",
+        "quantity": 0.25,
+        "unit": "cup",
+        "category": "produce"
+      }
+    ],
+    "steps": [
+      "Preheat oven to 375°F. Cook ziti 2 minutes less than package directions. Drain.",
+      "Brown sausage in a skillet, breaking it up. Add marinara sauce and simmer 5 minutes.",
+      "Mix ricotta, egg, half the mozzarella, and half the parmesan in a bowl.",
+      "Spread a thin layer of sauce in a 9x13 baking dish.",
+      "Layer half the pasta, half the ricotta mixture, and half the sauce. Repeat layers.",
+      "Top with remaining mozzarella and parmesan.",
+      "Cover with foil and bake 25 minutes. Remove foil and bake 10 more minutes until bubbly.",
+      "Let rest 10 minutes. Garnish with fresh basil."
+    ],
+    "cookTime": 50,
+    "prepTime": 20,
+    "servings": 8,
+    "tags": [
+      "italian",
+      "pasta",
+      "baked",
+      "comfort-food"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "involved"
+  },
+  {
+    "id": "seed-009",
+    "name": "Honey Garlic Chicken Thighs",
+    "description": "Sticky, sweet, and garlicky chicken thighs. Bone-in for extra flavor, and nearly impossible to mess up.",
+    "ingredients": [
+      {
+        "name": "chicken thighs",
+        "quantity": 8,
+        "unit": "bone-in",
+        "category": "meat"
+      },
+      {
+        "name": "honey",
+        "quantity": 0.33,
+        "unit": "cup",
+        "category": "pantry"
+      },
+      {
+        "name": "soy sauce",
+        "quantity": 0.25,
+        "unit": "cup",
+        "category": "condiments"
+      },
+      {
+        "name": "garlic",
+        "quantity": 6,
+        "unit": "cloves",
+        "category": "produce"
+      },
+      {
+        "name": "rice vinegar",
+        "quantity": 2,
+        "unit": "tbsp",
+        "category": "condiments"
+      },
+      {
+        "name": "sesame seeds",
+        "quantity": 1,
+        "unit": "tbsp",
+        "category": "pantry"
+      },
+      {
+        "name": "green onions",
+        "quantity": 3,
+        "unit": "stalks",
+        "category": "produce"
+      }
+    ],
+    "steps": [
+      "Preheat oven to 400°F.",
+      "Whisk together honey, soy sauce, minced garlic, and rice vinegar.",
+      "Season chicken thighs with salt and pepper. Place skin-side up in a baking dish.",
+      "Pour honey garlic sauce over chicken.",
+      "Bake 35-40 minutes until chicken is cooked through and skin is crispy, basting halfway.",
+      "Garnish with sesame seeds and sliced green onions."
+    ],
+    "cookTime": 40,
+    "prepTime": 10,
+    "servings": 4,
+    "tags": [
+      "asian",
+      "chicken",
+      "easy",
+      "honey-garlic"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "standard"
+  },
+  {
+    "id": "seed-010",
+    "name": "Black Bean Quesadillas",
+    "description": "Crispy tortillas stuffed with seasoned black beans, peppers, and cheese. Great for a quick lunch or light dinner.",
+    "ingredients": [
+      {
+        "name": "flour tortillas",
+        "quantity": 4,
+        "unit": "large",
+        "category": "bread"
+      },
+      {
+        "name": "black beans",
+        "quantity": 15,
+        "unit": "oz",
+        "category": "canned"
+      },
+      {
+        "name": "shredded cheddar cheese",
+        "quantity": 2,
+        "unit": "cups",
+        "category": "dairy"
+      },
+      {
+        "name": "bell pepper",
+        "quantity": 1,
+        "unit": "medium",
+        "category": "produce"
+      },
+      {
+        "name": "jalapeño",
+        "quantity": 1,
+        "unit": "small",
+        "category": "produce"
+      },
+      {
+        "name": "cumin",
+        "quantity": 1,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "salsa",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "condiments"
+      },
+      {
+        "name": "sour cream",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "dairy"
+      }
+    ],
+    "steps": [
+      "Drain and rinse black beans. Mash half of them with a fork.",
+      "Mix beans with diced bell pepper, diced jalapeño, and cumin.",
+      "Spread bean mixture on half of each tortilla. Top with cheese. Fold in half.",
+      "Cook quesadillas in a dry skillet over medium heat, 3 minutes per side until golden and cheese is melted.",
+      "Cut into wedges and serve with salsa and sour cream."
+    ],
+    "cookTime": 10,
+    "prepTime": 10,
+    "servings": 4,
+    "tags": [
+      "mexican",
+      "vegetarian",
+      "quick",
+      "lunch"
+    ],
+    "categories": [
+      "dinner",
+      "lunch"
+    ],
+    "complexity": "standard"
+  },
+  {
+    "id": "seed-011",
+    "name": "Lemon Herb Roasted Chicken",
+    "description": "A whole roasted chicken with lemon and fresh herbs. Sunday dinner classic that provides leftovers for the week.",
+    "ingredients": [
+      {
+        "name": "whole chicken",
+        "quantity": 1,
+        "unit": "4-5 lb",
+        "category": "meat"
+      },
+      {
+        "name": "lemon",
+        "quantity": 2,
+        "unit": "whole",
+        "category": "produce"
+      },
+      {
+        "name": "fresh rosemary",
+        "quantity": 3,
+        "unit": "sprigs",
+        "category": "produce"
+      },
+      {
+        "name": "fresh thyme",
+        "quantity": 5,
+        "unit": "sprigs",
+        "category": "produce"
+      },
+      {
+        "name": "garlic",
+        "quantity": 1,
+        "unit": "head",
+        "category": "produce"
+      },
+      {
+        "name": "butter",
+        "quantity": 4,
+        "unit": "tbsp",
+        "category": "dairy"
+      },
+      {
+        "name": "potatoes",
+        "quantity": 2,
+        "unit": "lbs",
+        "category": "produce"
+      },
+      {
+        "name": "carrots",
+        "quantity": 4,
+        "unit": "large",
+        "category": "produce"
+      }
+    ],
+    "steps": [
+      "Preheat oven to 425°F. Pat chicken dry and season generously inside and out with salt and pepper.",
+      "Stuff cavity with halved lemons, rosemary, thyme, and half the garlic.",
+      "Rub softened butter all over the chicken skin.",
+      "Quarter potatoes and cut carrots into chunks. Toss with olive oil, salt, and remaining garlic.",
+      "Place vegetables around the chicken in a roasting pan.",
+      "Roast 1 hour 15 minutes until internal temp reaches 165°F and juices run clear.",
+      "Rest 15 minutes before carving."
+    ],
+    "cookTime": 75,
+    "prepTime": 20,
+    "servings": 6,
+    "tags": [
+      "roast",
+      "chicken",
+      "sunday-dinner",
+      "meal-prep"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "involved"
+  },
+  {
+    "id": "seed-012",
+    "name": "Shrimp Scampi",
+    "description": "Garlicky shrimp in a white wine butter sauce over linguine. Date-night worthy in under 25 minutes.",
+    "ingredients": [
+      {
+        "name": "large shrimp",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "seafood"
+      },
+      {
+        "name": "linguine",
+        "quantity": 0.75,
+        "unit": "lb",
+        "category": "pasta"
+      },
+      {
+        "name": "butter",
+        "quantity": 4,
+        "unit": "tbsp",
+        "category": "dairy"
+      },
+      {
+        "name": "garlic",
+        "quantity": 5,
+        "unit": "cloves",
+        "category": "produce"
+      },
+      {
+        "name": "white wine",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "pantry"
+      },
+      {
+        "name": "lemon",
+        "quantity": 1,
+        "unit": "whole",
+        "category": "produce"
+      },
+      {
+        "name": "red pepper flakes",
+        "quantity": 0.25,
+        "unit": "tsp",
+        "category": "spices"
+      },
+      {
+        "name": "fresh parsley",
+        "quantity": 0.25,
+        "unit": "cup",
+        "category": "produce"
+      }
+    ],
+    "steps": [
+      "Cook linguine according to package directions. Reserve 1 cup pasta water.",
+      "Melt butter in a large skillet over medium heat. Add minced garlic and red pepper flakes. Cook 1 minute.",
+      "Add shrimp and cook 2-3 minutes per side until pink.",
+      "Pour in white wine and lemon juice. Simmer 2 minutes.",
+      "Toss in cooked pasta. Add pasta water as needed to create a silky sauce.",
+      "Garnish with chopped parsley and serve immediately."
+    ],
+    "cookTime": 15,
+    "prepTime": 10,
+    "servings": 4,
+    "tags": [
+      "italian",
+      "seafood",
+      "pasta",
+      "date-night"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "standard"
+  },
+  {
+    "id": "seed-013",
+    "name": "Salmon with Broccoli and Rice",
+    "description": "Simple seasoned salmon with steamed broccoli and rice. No recipe needed.",
+    "ingredients": [
+      {
+        "name": "salmon fillets",
+        "quantity": 4,
+        "unit": "6-oz",
+        "category": "seafood"
+      },
+      {
+        "name": "broccoli",
+        "quantity": 1,
+        "unit": "head",
+        "category": "produce"
+      },
+      {
+        "name": "rice",
+        "quantity": 2,
+        "unit": "cups",
+        "category": "pantry"
+      }
+    ],
+    "steps": [
+      "Season salmon, cook your preferred way. Steam broccoli. Make rice."
+    ],
+    "cookTime": 20,
+    "prepTime": 5,
+    "servings": 4,
+    "tags": [
+      "seafood",
+      "healthy",
+      "quick",
+      "staple"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "staple"
+  },
+  {
+    "id": "seed-014",
+    "name": "Grilled Chicken with Roasted Veggies",
+    "description": "Seasoned chicken breasts with whatever vegetables are on hand. A go-to weeknight staple.",
+    "ingredients": [
+      {
+        "name": "chicken breast",
+        "quantity": 4,
+        "unit": "pieces",
+        "category": "meat"
+      },
+      {
+        "name": "mixed vegetables",
+        "quantity": 4,
+        "unit": "cups",
+        "category": "produce"
+      },
+      {
+        "name": "olive oil",
+        "quantity": 2,
+        "unit": "tbsp",
+        "category": "pantry"
+      }
+    ],
+    "steps": [
+      "Season and grill chicken. Toss veggies with oil, season, roast at 425F until tender."
+    ],
+    "cookTime": 25,
+    "prepTime": 10,
+    "servings": 4,
+    "tags": [
+      "chicken",
+      "healthy",
+      "quick",
+      "staple"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "staple"
+  },
+  {
+    "id": "seed-015",
+    "name": "Burgers and Fries",
+    "description": "Classic homemade burgers with oven fries or frozen fries. Simple crowd-pleaser.",
+    "ingredients": [
+      {
+        "name": "ground beef",
+        "quantity": 1.5,
+        "unit": "lbs",
+        "category": "meat"
+      },
+      {
+        "name": "hamburger buns",
+        "quantity": 6,
+        "unit": "buns",
+        "category": "bread"
+      },
+      {
+        "name": "frozen fries",
+        "quantity": 1,
+        "unit": "bag",
+        "category": "frozen"
+      },
+      {
+        "name": "lettuce",
+        "quantity": 4,
+        "unit": "leaves",
+        "category": "produce"
+      },
+      {
+        "name": "tomato",
+        "quantity": 1,
+        "unit": "large",
+        "category": "produce"
+      },
+      {
+        "name": "cheddar cheese",
+        "quantity": 4,
+        "unit": "slices",
+        "category": "dairy"
+      }
+    ],
+    "steps": [
+      "Form patties, season, grill or pan-fry. Bake fries. Assemble burgers with toppings."
+    ],
+    "cookTime": 20,
+    "prepTime": 10,
+    "servings": 4,
+    "tags": [
+      "american",
+      "beef",
+      "quick",
+      "staple"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "staple"
+  },
+  {
+    "id": "seed-016",
+    "name": "Pasta with Meat Sauce",
+    "description": "Quick pasta with jarred sauce and browned ground beef. Weeknight standby.",
+    "ingredients": [
+      {
+        "name": "pasta",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "pasta"
+      },
+      {
+        "name": "ground beef",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "meat"
+      },
+      {
+        "name": "marinara sauce",
+        "quantity": 24,
+        "unit": "oz",
+        "category": "canned"
+      },
+      {
+        "name": "parmesan cheese",
+        "quantity": 0.25,
+        "unit": "cup",
+        "category": "dairy"
+      }
+    ],
+    "steps": [
+      "Brown beef, add sauce, simmer. Cook pasta. Combine and top with parmesan."
+    ],
+    "cookTime": 15,
+    "prepTime": 5,
+    "servings": 4,
+    "tags": [
+      "italian",
+      "pasta",
+      "beef",
+      "staple",
+      "quick"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "staple"
+  },
+  {
+    "id": "seed-017",
+    "name": "Pork Chops with Mashed Potatoes",
+    "description": "Pan-seared pork chops with creamy mashed potatoes and a green veggie on the side.",
+    "ingredients": [
+      {
+        "name": "pork chops",
+        "quantity": 4,
+        "unit": "bone-in",
+        "category": "meat"
+      },
+      {
+        "name": "potatoes",
+        "quantity": 2,
+        "unit": "lbs",
+        "category": "produce"
+      },
+      {
+        "name": "butter",
+        "quantity": 3,
+        "unit": "tbsp",
+        "category": "dairy"
+      },
+      {
+        "name": "milk",
+        "quantity": 0.5,
+        "unit": "cup",
+        "category": "dairy"
+      },
+      {
+        "name": "green beans",
+        "quantity": 1,
+        "unit": "lb",
+        "category": "produce"
+      }
+    ],
+    "steps": [
+      "Season and sear pork chops. Boil potatoes, mash with butter and milk. Steam green beans."
+    ],
+    "cookTime": 25,
+    "prepTime": 10,
+    "servings": 4,
+    "tags": [
+      "pork",
+      "comfort-food",
+      "staple"
+    ],
+    "categories": [
+      "dinner"
+    ],
+    "complexity": "staple"
+  }
+]

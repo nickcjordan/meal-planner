@@ -1,0 +1,30 @@
+{
+  "name": "meal-planner",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build": "turbo run build --force",
+    "check": "turbo run build typecheck lint test --force && turbo run test:integration --force",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint --force",
+    "test": "turbo run test --force",
+    "test:integration": "turbo run test:integration --force",
+    "typecheck": "turbo run typecheck --force",
+    "setup:db": "tsx scripts/setup-dynamodb.ts",
+    "seed": "tsx scripts/seed-recipes.ts"
+  },
+  "devDependencies": {
+    "turbo": "^2",
+    "typescript": "^5.7",
+    "tsx": "^4",
+    "prettier": "^3",
+    "@eslint/js": "^9",
+    "typescript-eslint": "^8",
+    "eslint": "^9"
+  },
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
