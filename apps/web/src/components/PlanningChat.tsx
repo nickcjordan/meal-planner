@@ -1,16 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Loader2, Play, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { Send, Loader2, Play, RotateCcw, Info, ShoppingCart, ChefHat } from "lucide-react";
 import { ChatMessage } from "./ChatMessage";
 import { MealPlanPanel } from "./MealPlanPanel";
 import { RecipeModal } from "./RecipeModal";
-import type { MealProposal } from "@meal-planner/agent";
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
+import { getToolLabel } from "@/lib/chat";
+import type { Message } from "@/lib/chat";
+import type { MealProposal, ProposedStaple, ProposedSuggestion } from "@meal-planner/agent";
 
 interface SessionState {
   claudeSessionId: string | null;
@@ -50,16 +48,6 @@ function clearSession() {
   }
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  search_recipes: "Searching recipes...",
-  get_recipe_details: "Reading recipe details...",
-  get_recent_meal_plans: "Checking recent meal history...",
-  get_recipe_history: "Looking up recipe history...",
-  get_pantry_items: "Checking pantry items...",
-  save_meal_plan: "Saving your meal plan...",
-  present_meal_plan: "Preparing meal plan...",
-};
-
 interface PlanningChatProps {
   weekOf: string;
 }
@@ -76,7 +64,38 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
   const [modalRecipeId, setModalRecipeId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
+  const persistRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Family context for pre-planning reminder
+  const [familyContext, setFamilyContext] = useState<{
+    members: { name: string; isActive: boolean; notes?: string }[];
+    adaptations: { name: string; memberName: string; isActive: boolean }[];
+    inventoryAlerts: { name: string; status: string }[];
+  } | null>(null);
+
+  const fetchFamilyContext = useCallback(async () => {
+    try {
+      const [membersRes, adaptRes, invRes] = await Promise.all([
+        fetch("/api/members").then((r) => r.json()),
+        fetch("/api/adaptations").then((r) => r.json()),
+        fetch("/api/inventory").then((r) => r.json()).catch(() => []),
+      ]);
+      const memberMap = Object.fromEntries(membersRes.map((m: { id: string; name: string }) => [m.id, m.name]));
+      setFamilyContext({
+        members: membersRes,
+        adaptations: adaptRes.map((a: { name: string; memberId: string; isActive: boolean }) => ({
+          name: a.name, memberName: memberMap[a.memberId] ?? "Unknown", isActive: a.isActive,
+        })),
+        inventoryAlerts: invRes.filter((i: { status: string }) => i.status === "out" || i.status === "low"),
+      });
+    } catch {
+      // silent — reminder is optional
+    }
+  }, []);
+
+  useEffect(() => { fetchFamilyContext(); }, [fetchFamilyContext]);
+
+  // Restore session from localStorage on mount
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
@@ -89,15 +108,16 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
     }
   }, [weekOf]);
 
-  const persistSession = useCallback(() => {
-    saveSession({ claudeSessionId, messages, proposal, weekOf, confirmed });
-  }, [claudeSessionId, messages, proposal, weekOf, confirmed]);
-
+  // Persist to localStorage (debounced to avoid excessive writes)
   useEffect(() => {
-    if (initialized.current && (messages.length > 0 || claudeSessionId)) {
-      persistSession();
-    }
-  }, [messages, claudeSessionId, proposal, confirmed, persistSession]);
+    if (!initialized.current) return;
+    if (messages.length === 0 && !claudeSessionId) return;
+
+    if (persistRef.current) clearTimeout(persistRef.current);
+    persistRef.current = setTimeout(() => {
+      saveSession({ claudeSessionId, messages, proposal, weekOf, confirmed });
+    }, 300);
+  }, [messages, claudeSessionId, proposal, confirmed, weekOf]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -160,12 +180,20 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
                 setStreamingText(accumulatedText);
                 break;
 
+              case "tool_start":
+                setToolStatus(getToolLabel(event.toolName));
+                break;
+
               case "tool_progress":
-                setToolStatus(TOOL_LABELS[event.toolName] ?? `Using ${event.toolName}...`);
+                setToolStatus(getToolLabel(event.toolName));
                 break;
 
               case "tool_result":
                 setToolStatus(null);
+                break;
+
+              case "status":
+                setToolStatus(event.message);
                 break;
 
               case "meal_proposal":
@@ -229,6 +257,65 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
     sendMessage(`Can you swap ${dayLabel}'s ${mealType} for something different?${complexityNote}`);
   }
 
+  function handleRemoveStaple(stapleName: string) {
+    if (!proposal) return;
+    const updatedStaples = (proposal.groceryStaples ?? []).filter((s) => s.name !== stapleName);
+    setProposal({ ...proposal, groceryStaples: updatedStaples });
+  }
+
+  function handleAddStaple(staple: ProposedStaple) {
+    if (!proposal) return;
+    const existing = proposal.groceryStaples ?? [];
+    if (existing.some((s) => s.name === staple.name)) return;
+    setProposal({ ...proposal, groceryStaples: [...existing, staple] });
+  }
+
+  function handleConfirmCarryover(name: string, action: "confirmed" | "added-to-list") {
+    if (!proposal) return;
+    if (action === "added-to-list") {
+      // Remove from carryover — the agent should re-present without it
+      sendMessage(`I don't have the leftover ${name}. Please add it to the shopping list.`);
+    } else {
+      // Just update local state to show confirmed
+      const updated = (proposal.carryoverItems ?? []).filter((c) => c.name !== name);
+      setProposal({ ...proposal, carryoverItems: updated });
+    }
+  }
+
+  function handleAcceptSuggestion(suggestion: ProposedSuggestion) {
+    if (!proposal) return;
+
+    // Pantry promotions: add to pantry via API, then tell the agent
+    if (suggestion.type === "pantry-promotion") {
+      const updatedSuggestions = (proposal.suggestions ?? []).filter((s) => s.id !== suggestion.id);
+      setProposal({ ...proposal, suggestions: updatedSuggestions });
+      sendMessage(
+        `Yes, add "${suggestion.title}" to our pantry — we always have it on hand.`,
+        false,
+      );
+      return;
+    }
+
+    if (suggestion.item) {
+      // Add the suggested item as a staple in the plan
+      handleAddStaple(suggestion.item);
+      // Remove from suggestions
+      const updatedSuggestions = (proposal.suggestions ?? []).filter((s) => s.id !== suggestion.id);
+      setProposal({ ...proposal, suggestions: updatedSuggestions });
+
+      // If it's a smart-promotion, also add it as a permanent staple via chat
+      if (suggestion.type === "smart-promotion") {
+        sendMessage(
+          `Yes, add "${suggestion.item.name}" as a ${suggestion.item.frequency} grocery staple.`,
+          false,
+        );
+      }
+    } else {
+      // For deal-meal or other non-item suggestions, delegate to chat
+      sendMessage(`I'd like to add the suggested "${suggestion.title}" to the plan.`);
+    }
+  }
+
   function handleSaved() {
     setConfirmed(true);
     clearSession();
@@ -255,8 +342,8 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
   if (!proposal) {
     return (
       <>
-        <div className="mx-auto flex h-[calc(100vh-7rem)] max-w-3xl flex-col rounded-xl border border-card-border bg-card shadow-sm">
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="mx-auto flex h-full max-w-3xl flex-col rounded-xl border border-card-border bg-card shadow-sm">
+          <div className={`flex-1 p-6 space-y-4 ${hasStarted ? "overflow-y-auto" : "overflow-hidden"}`}>
             {!hasStarted && (
               <div className="flex h-full flex-col items-center justify-center gap-6">
                 <div className="text-center">
@@ -274,6 +361,27 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
                   </button>
                   <p className="text-xs text-muted">Or type preferences below</p>
                 </div>
+
+                {/* Family context reminder */}
+                {familyContext && (familyContext.members.some((m) => !m.isActive) || familyContext.inventoryAlerts.length > 0 || familyContext.adaptations.some((a) => a.isActive)) && (
+                  <div className="mt-4 w-full max-w-md rounded-lg border border-card-border bg-background px-4 py-3 text-left text-xs text-muted">
+                    <div className="flex items-center gap-1.5 text-foreground font-medium mb-1.5">
+                      <Info className="h-3.5 w-3.5" /> Before you plan
+                    </div>
+                    <ul className="space-y-0.5 ml-5 list-disc">
+                      {familyContext.members.filter((m) => !m.isActive).map((m) => (
+                        <li key={m.name} className="text-amber-500">{m.name} is marked away this week</li>
+                      ))}
+                      {familyContext.adaptations.filter((a) => a.isActive).map((a) => (
+                        <li key={a.name}>{a.memberName}: {a.name} active</li>
+                      ))}
+                      {familyContext.inventoryAlerts.map((i) => (
+                        <li key={i.name}>{i.status === "out" ? "Out of" : "Low on"} {i.name}</li>
+                      ))}
+                      <li>Anyone traveling? Guests coming? Mention it below.</li>
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
 
@@ -283,10 +391,12 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
 
             {streamingText && <ChatMessage role="assistant" content={streamingText} />}
 
-            {toolStatus && (
-              <div className="flex items-center gap-2 text-sm text-muted">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {toolStatus}
+            {streaming && (streamingText === "" || toolStatus) && (
+              <div className={`flex flex-col items-center justify-center gap-3 ${messages.length === 0 && !streamingText ? "h-full" : "py-8"}`}>
+                <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                <span className="text-sm text-muted">
+                  {toolStatus ?? "Thinking..."}
+                </span>
               </div>
             )}
 
@@ -323,7 +433,7 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
   // After a proposal exists: split layout — chat sidebar left, plan hero right
   return (
     <>
-      <div className="flex h-[calc(100vh-7rem)] gap-4">
+      <div className="flex h-full gap-4">
         {/* Chat sidebar */}
         <div className="flex w-80 shrink-0 flex-col rounded-xl border border-card-border bg-card shadow-sm xl:w-96">
           <div className="border-b border-card-border px-4 py-3">
@@ -337,10 +447,10 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
 
             {streamingText && <ChatMessage role="assistant" content={streamingText} />}
 
-            {toolStatus && (
-              <div className="flex items-center gap-2 text-xs text-muted">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {toolStatus}
+            {streaming && (streamingText === "" || toolStatus) && (
+              <div className="flex items-center gap-2 py-3 text-xs text-muted justify-center">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                <span>{toolStatus ?? "Thinking..."}</span>
               </div>
             )}
 
@@ -369,12 +479,31 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
               </div>
             </div>
           ) : (
-            <div className="border-t border-card-border p-3">
+            <div className="border-t border-card-border p-3 space-y-3">
+              <div className="rounded-lg bg-tag-bg p-3">
+                <p className="text-xs font-medium text-foreground">Plan saved! What&apos;s next?</p>
+                <div className="mt-2 flex gap-2">
+                  <Link
+                    href="/grocery"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" />
+                    Grocery List
+                  </Link>
+                  <Link
+                    href="/week"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-card-border px-3 py-2 text-xs font-medium text-muted transition-colors hover:bg-card hover:text-foreground"
+                  >
+                    <ChefHat className="h-3.5 w-3.5" />
+                    This Week
+                  </Link>
+                </div>
+              </div>
               <button
                 onClick={handleStartNew}
                 className="flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors"
               >
-                <RotateCcw className="h-3.5 w-3.5" /> New session
+                <RotateCcw className="h-3.5 w-3.5" /> Start a new session
               </button>
             </div>
           )}
@@ -387,8 +516,12 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
             weekOf={weekOf}
             onRequestSwap={handleRequestSwap}
             onRemoveExtra={(name) => sendMessage(`Remove the "${name}" extra from the plan.`)}
+            onRemoveStaple={handleRemoveStaple}
+            onConfirmCarryover={handleConfirmCarryover}
+            onAcceptSuggestion={handleAcceptSuggestion}
             onRecipeClick={(id) => setModalRecipeId(id)}
             onSaved={handleSaved}
+            onDiscard={handleStartNew}
           />
         </div>
       </div>

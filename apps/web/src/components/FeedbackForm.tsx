@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PlanningSession } from "@meal-planner/types";
 import { StarRating } from "./StarRating";
 import { CheckCircle } from "lucide-react";
+import { CardSkeleton } from "@/components/Skeleton";
 
 interface MealFeedbackEntry {
   recipeId: string;
@@ -70,7 +71,13 @@ export function FeedbackForm({ session }: { session: PlanningSession }) {
   }
 
   if (loading) {
-    return <div className="py-8 text-center text-muted">Loading meals...</div>;
+    return (
+      <div className="space-y-4">
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
+    );
   }
 
   if (submitted) {
@@ -94,16 +101,16 @@ export function FeedbackForm({ session }: { session: PlanningSession }) {
       {entries.map((entry, i) => (
         <div
           key={entry.recipeId}
-          className="rounded-xl border border-card-border bg-card p-5"
+          className="rounded-xl border border-card-border bg-card p-6"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <h3 className="font-medium text-foreground">{entry.recipeName}</h3>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex shrink-0 items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={entry.wasMade}
                 onChange={(e) => updateEntry(i, { wasMade: e.target.checked })}
-                className="h-4 w-4 rounded border-input-border accent-accent"
+                className="h-5 w-5 rounded border-input-border accent-accent"
               />
               <span className="text-muted">Made this</span>
             </label>

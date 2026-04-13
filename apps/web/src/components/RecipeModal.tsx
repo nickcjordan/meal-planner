@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, Clock, Users, ExternalLink } from "lucide-react";
 import type { Recipe } from "@meal-planner/types";
+import { IngredientActions } from "./IngredientActions";
 
 interface RecipeModalProps {
   recipeId: string;
@@ -87,16 +88,7 @@ export function RecipeModal({ recipeId, onClose }: RecipeModalProps) {
             <div className="mt-8 grid gap-8 lg:grid-cols-2">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Ingredients</h3>
-                <ul className="mt-3 space-y-2">
-                  {recipe.ingredients.map((ing, i) => (
-                    <li key={i} className="flex items-baseline gap-2 text-sm">
-                      <span className="font-medium text-foreground">
-                        {ing.quantity} {ing.unit}
-                      </span>
-                      <span className="text-muted">{ing.name}</span>
-                    </li>
-                  ))}
-                </ul>
+                <IngredientActions ingredients={recipe.ingredients} />
               </div>
 
               <div>

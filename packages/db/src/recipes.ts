@@ -4,6 +4,7 @@ import {
   DeleteCommand,
   QueryCommand,
   ScanCommand,
+  BatchGetCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { Recipe, CreateRecipeInput, UpdateRecipeInput, DynamoDBRecord } from "@meal-planner/types";
 import { getDocClient, TABLE_NAME, GSI1_NAME } from "./client.js";
@@ -207,4 +208,51 @@ export async function listTags(): Promise<string[]> {
     tags.add(pk.replace("TAG#", ""));
   }
   return Array.from(tags).sort();
+}
+
+export async function findRecipeBySourceUrl(url: string): Promise<Recipe | null> {
+  const result = await getDocClient().send(
+    new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: "entityType = :type AND sourceUrl = :url",
+      ExpressionAttributeValues: { ":type": "RECIPE", ":url": url },
+      Limit: 1,
+    }),
+  );
+
+  const items = result.Items ?? [];
+  if (items.length === 0) return null;
+  return fromRecord(items[0] as RecipeRecord);
+}
+
+export async function getRecipesBatch(ids: string[]): Promise<Map<string, Recipe>> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+
+  const results = new Map<string, Recipe>();
+
+  for (let i = 0; i < unique.length; i += 100) {
+    const chunk = unique.slice(i, i + 100);
+    let keys = chunk.map((id) => ({ PK: `RECIPE#${id}`, SK: `RECIPE#${id}` }));
+
+    while (keys.length > 0) {
+      const response = await getDocClient().send(
+        new BatchGetCommand({
+          RequestItems: {
+            [TABLE_NAME]: { Keys: keys },
+          },
+        }),
+      );
+
+      const items = response.Responses?.[TABLE_NAME] ?? [];
+      for (const item of items) {
+        const recipe = fromRecord(item as RecipeRecord);
+        results.set(recipe.id, recipe);
+      }
+
+      keys = (response.UnprocessedKeys?.[TABLE_NAME]?.Keys ?? []) as typeof keys;
+    }
+  }
+
+  return results;
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionByWeek, createSession, updateSession } from "@meal-planner/db";
-import type { DayOfWeek, MealType, PlanExtra } from "@meal-planner/types";
+import type { DayOfWeek, MealType, PlanExtra, SessionStapleItem, CarryoverItem } from "@meal-planner/types";
 
 interface SaveRequestBody {
   weekOf: string;
@@ -10,6 +10,8 @@ interface SaveRequestBody {
     recipeId: string;
   }>;
   extras?: PlanExtra[];
+  groceryStaples?: SessionStapleItem[];
+  carryoverItems?: CarryoverItem[];
   summary: string;
 }
 
@@ -30,6 +32,8 @@ export async function POST(request: Request) {
       session = await updateSession(existing.id, {
         meals,
         extras: body.extras,
+        groceryStaples: body.groceryStaples,
+        carryoverItems: body.carryoverItems,
         summary: body.summary,
         status: "confirmed",
       });
@@ -39,6 +43,8 @@ export async function POST(request: Request) {
         status: "confirmed",
         meals,
         extras: body.extras,
+        groceryStaples: body.groceryStaples,
+        carryoverItems: body.carryoverItems,
         summary: body.summary,
       });
     }

@@ -13,7 +13,7 @@ export function StarRating({ value, onChange, readonly = false }: StarRatingProp
   const [hover, setHover] = useState(0);
 
   return (
-    <div className="flex gap-0.5">
+    <div className="flex gap-1">
       {[1, 2, 3, 4, 5].map((star) => {
         const filled = star <= (hover || value);
         return (
@@ -24,10 +24,10 @@ export function StarRating({ value, onChange, readonly = false }: StarRatingProp
             onClick={() => onChange?.(star)}
             onMouseEnter={() => !readonly && setHover(star)}
             onMouseLeave={() => !readonly && setHover(0)}
-            className={`${readonly ? "cursor-default" : "cursor-pointer"} transition-colors`}
+            className={`p-1 ${readonly ? "cursor-default" : "cursor-pointer"} transition-colors`}
           >
             <Star
-              className={`h-5 w-5 ${
+              className={`h-6 w-6 ${
                 filled ? "fill-amber-400 text-amber-400" : "text-muted"
               }`}
             />

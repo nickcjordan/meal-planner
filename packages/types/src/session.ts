@@ -29,6 +29,8 @@ export interface PlanningSession {
   status: SessionStatus;
   meals: PlannedMeal[];
   extras?: PlanExtra[];
+  groceryStaples?: import("./staples.js").SessionStapleItem[];
+  carryoverItems?: import("./staples.js").CarryoverItem[];
   summary?: string;
   createdAt: string;
   updatedAt: string;

@@ -1,4 +1,4 @@
-import { PutCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, GetCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import type {
   PlanningSession,
   CreateSessionInput,
@@ -97,20 +97,18 @@ export async function getSessionByWeek(weekOf: string): Promise<PlanningSession 
 }
 
 export async function getRecentSessions(limit: number = 8): Promise<PlanningSession[]> {
-  // Scan for sessions and sort by weekOf descending
+  // Scan for session entities and sort client-side by weekOf descending
   const result = await getDocClient().send(
-    new QueryCommand({
+    new ScanCommand({
       TableName: TABLE_NAME,
-      IndexName: GSI1_NAME,
-      KeyConditionExpression: "GSI1PK BETWEEN :start AND :end",
-      ExpressionAttributeValues: {
-        ":start": "WEEK#",
-        ":end": "WEEK#~",
-      },
-      ScanIndexForward: false,
-      Limit: limit,
+      FilterExpression: "entityType = :type",
+      ExpressionAttributeValues: { ":type": "SESSION" },
     }),
   );
 
-  return (result.Items ?? []).map((item) => fromRecord(item as SessionRecord));
+  const sessions = (result.Items ?? [])
+    .map((item) => fromRecord(item as SessionRecord))
+    .sort((a, b) => b.weekOf.localeCompare(a.weekOf));
+
+  return sessions.slice(0, limit);
 }

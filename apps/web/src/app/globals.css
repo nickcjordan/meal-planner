@@ -11,6 +11,10 @@
   --tag-bg: #eff6ff;
   --tag-text: #1d4ed8;
   --input-border: #d1d5db;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #7c3aed;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,6 +29,10 @@
     --tag-bg: #1e293b;
     --tag-text: #60a5fa;
     --input-border: #374151;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #a78bfa;
   }
 }
 
@@ -39,6 +47,10 @@
   --color-tag-bg: var(--tag-bg);
   --color-tag-text: var(--tag-text);
   --color-input-border: var(--input-border);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -47,4 +59,29 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Thin, subtle scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--card-border) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+
+*::-webkit-scrollbar-thumb {
+  background: var(--card-border);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
 }

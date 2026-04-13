@@ -7,6 +7,8 @@ import { Plus, Trash2 } from "lucide-react";
 
 interface RecipeFormProps {
   recipe?: Recipe;
+  /** Force create mode even when recipe is provided (for imports) */
+  isNew?: boolean;
 }
 
 const emptyIngredient: Ingredient = { name: "", quantity: 0, unit: "", category: "" };
@@ -16,7 +18,7 @@ const inputClass =
 
 const labelClass = "block text-sm font-medium text-foreground";
 
-export function RecipeForm({ recipe }: RecipeFormProps) {
+export function RecipeForm({ recipe, isNew }: RecipeFormProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
 
@@ -33,6 +35,7 @@ export function RecipeForm({ recipe }: RecipeFormProps) {
   const [categories, setCategories] = useState(recipe?.categories.join(", ") ?? "");
   const [complexity, setComplexity] = useState<RecipeComplexity>(recipe?.complexity ?? "standard");
   const [sourceUrl, setSourceUrl] = useState(recipe?.sourceUrl ?? "");
+  const [imageUrl] = useState(recipe?.imageUrl ?? "");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -56,10 +59,12 @@ export function RecipeForm({ recipe }: RecipeFormProps) {
         .filter(Boolean),
       complexity,
       sourceUrl: sourceUrl || undefined,
+      imageUrl: imageUrl || undefined,
     };
 
-    const url = recipe ? `/api/recipes/${recipe.id}` : "/api/recipes";
-    const method = recipe ? "PUT" : "POST";
+    const isCreate = !recipe || isNew;
+    const url = isCreate ? "/api/recipes" : `/api/recipes/${recipe.id}`;
+    const method = isCreate ? "POST" : "PUT";
 
     const res = await fetch(url, {
       method,

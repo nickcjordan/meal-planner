@@ -7,7 +7,7 @@ import { Calendar } from "lucide-react";
 const STATUS_STYLES: Record<string, string> = {
   draft: "bg-muted/20 text-muted",
   confirmed: "bg-accent/20 text-accent",
-  completed: "bg-green-500/20 text-green-500",
+  completed: "bg-success/20 text-success",
 };
 
 export function SessionCard({ session }: { session: PlanningSession }) {

@@ -14,6 +14,8 @@
   "dependencies": {
     "@meal-planner/agent": "*",
     "@meal-planner/db": "*",
+    "@meal-planner/heb": "*",
+    "@meal-planner/import": "*",
     "@meal-planner/types": "*",
     "clsx": "^2",
     "lucide-react": "^0.500",

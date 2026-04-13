@@ -7,7 +7,14 @@ export type EntityType =
   | "FEEDBACK"
   | "HISTORY"
   | "SHOPLIST"
-  | "PANTRY";
+  | "GROCERYLIST"
+  | "PANTRY"
+  | "STAPLE"
+  | "PREFERENCE"
+  | "INVENTORY"
+  | "MEMBER"
+  | "ADAPTATION"
+  | "HEBCONFIG";
 
 export interface DynamoDBRecord {
   PK: string;

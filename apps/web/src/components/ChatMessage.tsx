@@ -1,19 +1,48 @@
 "use client";
 
+import Link from "next/link";
+
 interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
 }
 
 function renderMarkdown(text: string) {
-  // Simple bold rendering for **text** patterns
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  // Split on bold (**text**) and links ([text](url)) patterns
+  const parts = text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
         <strong key={i} className="font-semibold text-foreground">
           {part.slice(2, -2)}
         </strong>
+      );
+    }
+    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (linkMatch) {
+      const [, label, href] = linkMatch;
+      // Internal links use Next.js Link for client-side navigation
+      if (href.startsWith("/")) {
+        return (
+          <Link
+            key={i}
+            href={href}
+            className="text-accent underline underline-offset-2 hover:text-accent-hover"
+          >
+            {label}
+          </Link>
+        );
+      }
+      return (
+        <a
+          key={i}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline underline-offset-2 hover:text-accent-hover"
+        >
+          {label}
+        </a>
       );
     }
     return <span key={i}>{part}</span>;

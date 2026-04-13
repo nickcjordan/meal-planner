@@ -25,7 +25,7 @@ export function RecipeCard({ recipe }: { recipe: Recipe }) {
           No image
         </div>
       )}
-      <div className="p-5">
+      <div className="p-6">
         <h3 className="text-lg font-semibold text-foreground group-hover:text-accent transition-colors">
           {recipe.name}
         </h3>

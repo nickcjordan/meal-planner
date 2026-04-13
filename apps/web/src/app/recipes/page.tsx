@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Recipe } from "@meal-planner/types";
 import { RecipeCard } from "@/components/RecipeCard";
 import { SearchBar } from "@/components/SearchBar";
-import { Plus } from "lucide-react";
+import { Plus, Download } from "lucide-react";
 
 export default function RecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -54,12 +54,20 @@ export default function RecipesPage() {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Recipes</h1>
-        <Link
-          href="/recipes/new"
-          className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-        >
-          <Plus className="h-4 w-4" /> Add Recipe
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/recipes/import"
+            className="flex items-center gap-1.5 rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-tag-bg"
+          >
+            <Download className="h-4 w-4" /> Import
+          </Link>
+          <Link
+            href="/recipes/new"
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            <Plus className="h-4 w-4" /> Add Recipe
+          </Link>
+        </div>
       </div>
 
       <div className="mt-5 space-y-3">

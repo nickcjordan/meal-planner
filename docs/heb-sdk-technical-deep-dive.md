@@ -1,6 +1,48 @@
 # HEB SDK & Product Data: Technical Deep Dive
 
-> Research conducted 2026-04-10. Based on analysis of public GitHub repos and HEB's web/mobile architecture.
+> Research conducted 2026-04-10. Updated 2026-04-11 with auth spike findings.
+> Based on analysis of public GitHub repos and HEB's web/mobile architecture.
+
+## Auth Spike Results (2026-04-11)
+
+**PKCE OAuth flow is a dead end.** HEB's security service (Imperva) blocks requests to `accounts.heb.com/oidc/auth` from browsers entirely — returns "Access Denied, Error 15, blocked by our security service" before the OAuth flow even starts. The `myheb-ios-prd` client ID is locked to the mobile app's network context.
+
+**Cookie-based GraphQL also blocked.** Extracting browser cookies (`sat`, `reese84`) and sending them from Node.js also fails. HEB's Imperva returns an HTML challenge page instead of JSON. The `reese84` cookie is a browser fingerprint tied to the browser's execution environment — when Node.js sends it, the environment mismatch triggers bot detection.
+
+**Root cause:** HEB's bot detection (Imperva/Incapsula) requires a real browser environment. Server-side HTTP requests — whether using bearer tokens or browser cookies — are blocked because the requests lack the browser fingerprint context that Imperva expects.
+
+**How do the unofficial projects handle this?**
+- `texas-grocery-mcp` uses **Playwright** (a real headless browser) to make requests, naturally passing Imperva's browser checks. Sessions expire every ~11 minutes, requiring Playwright-based refresh.
+- `heb-sdk-unofficial` cookie-bridge captures cookies from a **real browser extension** — but even then, the cookies are used by the server, not a browser.
+- `HEBMCP` may only work in environments where Imperva doesn't challenge (certain IPs, browser-like user agents, etc.).
+
+**Remaining viable options:**
+1. **Puppeteer-based session refresh** — VALIDATED. See spike results below.
+2. **Instacart Developer Platform** — Official public API, no bot detection issues, HEB is a partner retailer. Saved as fallback.
+
+### Puppeteer Spike Results (2026-04-11)
+
+**The Puppeteer approach works end-to-end.** Using `puppeteer-core` with the user's installed Chrome:
+
+1. Launch headless Chrome (~1s)
+2. Navigate to heb.com — Imperva challenge auto-solved by real browser (~4s)
+3. Wait for `reese84` token generation (~5s)
+4. Extract cookies (17 cookies captured)
+5. Close browser
+6. Use cookies with plain `fetch()` for GraphQL product searches (~200ms each)
+
+**Total time: ~17 seconds** for browser launch + 3 product searches. Subsequent searches (reusing cookies) are sub-second.
+
+**No HEB account required.** The `sat` cookie (session auth token) was absent — searches work with just `reese84` (Imperva token) and session cookies. Product search, prices, brands, sizes, and stock status are all available without login.
+
+**Sample results (store #790):**
+```
+"whole milk"       → H-E-B Whole Milk — $2.88 — 1 gal — IN_STOCK
+"ground beef"      → H-E-B 100% Pure Ground Beef Chuck, 80% Lean — $6.99 — 1 lb — IN_STOCK
+"saltine crackers" → H-E-B Saltine Crackers - Original — $2.68 — 16 oz — IN_STOCK
+```
+
+**Architecture:** Puppeteer is NOT used for every request. It runs every ~10 minutes to refresh cookies, then plain HTTP handles all data fetching. Uses `puppeteer-core` with the user's existing Chrome installation (no 280MB Chromium download).
 
 ## Goal
 
