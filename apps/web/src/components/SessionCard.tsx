@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { PlanningSession } from "@meal-planner/types";
 import { Calendar } from "lucide-react";
+import { formatWeekOf } from "@/lib/week";
 
 const STATUS_STYLES: Record<string, string> = {
   draft: "bg-muted/20 text-muted",
@@ -13,7 +14,7 @@ const STATUS_STYLES: Record<string, string> = {
 export function SessionCard({ session }: { session: PlanningSession }) {
   return (
     <Link
-      href={`/history/${session.id}`}
+      href={`/settings/history/${session.id}`}
       className="flex items-start gap-4 rounded-xl border border-card-border bg-card p-5 shadow-sm transition-all hover:shadow-lg hover:border-accent/30"
     >
       <Calendar className="mt-0.5 h-6 w-6 shrink-0 text-muted" />
@@ -21,7 +22,7 @@ export function SessionCard({ session }: { session: PlanningSession }) {
         <div className="flex items-center gap-2">
           <span className="font-medium text-foreground">
             Week of{" "}
-            {new Date(session.weekOf).toLocaleDateString("en-US", {
+            {formatWeekOf(session.weekOf, {
               month: "short",
               day: "numeric",
               year: "numeric",

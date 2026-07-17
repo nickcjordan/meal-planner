@@ -8,7 +8,7 @@ interface WeekCalendarProps {
   recipes: Record<string, string>;
 }
 
-const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 const DAY_LABELS: Record<string, string> = {
   monday: "Mon",
   tuesday: "Tue",

@@ -1,10 +1,10 @@
-import { PutCommand, DeleteCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, DeleteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import type {
   DietaryAdaptation,
   CreateDietaryAdaptationInput,
   DynamoDBRecord,
 } from "@meal-planner/types";
-import { getDocClient, TABLE_NAME, GSI1_NAME } from "./client.js";
+import { getDocClient, TABLE_NAME, GSI1_NAME, queryAll, stripUndefined } from "./client.js";
 import { randomUUID } from "crypto";
 
 type AdaptationRecord = DynamoDBRecord & DietaryAdaptation;
@@ -52,7 +52,7 @@ export async function updateDietaryAdaptation(
 
   const updated: DietaryAdaptation = {
     ...existing,
-    ...updates,
+    ...stripUndefined(updates),
     id,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
@@ -98,28 +98,24 @@ export async function removeDietaryAdaptation(id: string): Promise<boolean> {
 }
 
 export async function listDietaryAdaptations(): Promise<DietaryAdaptation[]> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: "PK = :pk",
-      ExpressionAttributeValues: { ":pk": "ADAPTATIONS#default" },
-    }),
-  );
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "PK = :pk",
+    ExpressionAttributeValues: { ":pk": "ADAPTATIONS#default" },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as AdaptationRecord));
+  return items.map((item) => fromRecord(item as AdaptationRecord));
 }
 
 export async function listAdaptationsForMember(
   memberId: string,
 ): Promise<DietaryAdaptation[]> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      IndexName: GSI1_NAME,
-      KeyConditionExpression: "GSI1PK = :pk",
-      ExpressionAttributeValues: { ":pk": `ADAPTATIONS#MEMBER#${memberId}` },
-    }),
-  );
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    IndexName: GSI1_NAME,
+    KeyConditionExpression: "GSI1PK = :pk",
+    ExpressionAttributeValues: { ":pk": `ADAPTATIONS#MEMBER#${memberId}` },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as AdaptationRecord));
+  return items.map((item) => fromRecord(item as AdaptationRecord));
 }

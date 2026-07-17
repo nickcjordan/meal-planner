@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
-import { getHebStore, getHebCookies, deleteHebCookies } from "@meal-planner/heb";
+import {
+  getHebStore,
+  getHebStoreIfConfigured,
+  getHebCookies,
+  deleteHebCookies,
+} from "@meal-planner/heb";
 
 export async function GET() {
   try {
-    const store = await getHebStore();
+    const configured = await getHebStoreIfConfigured();
+    const store = configured ?? (await getHebStore());
     const cookies = await getHebCookies();
 
     const connected = !!cookies;
@@ -15,7 +21,10 @@ export async function GET() {
 
     return NextResponse.json({
       connected,
-      store: store ?? undefined,
+      store,
+      // True only when a real store record exists in DynamoDB, so the UI can
+      // distinguish a user-chosen store from the hardcoded default fallback.
+      storeConfigured: configured !== null,
       cookieAge,
       cookieFresh: cookieAge !== undefined && cookieAge < 10 * 60 * 1000,
     });

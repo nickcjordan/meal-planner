@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { MessageCircle, X, Send, Loader2, RotateCcw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { MessageCircle, X, Send, Loader2, RotateCcw, Check } from "lucide-react";
 import { ChatMessage } from "./ChatMessage";
 import { useToast } from "./Toast";
 import { getToolLabel, isWriteTool } from "@/lib/chat";
-import type { Message } from "@/lib/chat";
+import type { Message, ToolActivity } from "@/lib/chat";
 
 interface AssistantSessionState {
   claudeSessionId: string | null;
@@ -57,8 +58,8 @@ function getPageContext(pathname: string): string {
   if (pathname === "/pantry") return "the Pantry page (managing always-on-hand ingredients)";
   if (pathname.startsWith("/settings/preferences")) return "the Family Preferences page";
   if (pathname.startsWith("/settings/kitchen")) return "the Kitchen Settings page";
+  if (pathname.startsWith("/settings/history")) return "the Meal Plan History page";
   if (pathname.startsWith("/settings")) return "the Settings page";
-  if (pathname.startsWith("/history")) return "the Meal Plan History page";
   if (pathname.startsWith("/review")) return "the Meal Review page";
   if (pathname.startsWith("/shopping")) return "the Shopping List page";
   return pathname;
@@ -81,9 +82,12 @@ export function AssistantFAB({ pathname }: AssistantFABProps) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  const [toolStatus, setToolStatus] = useState<string | null>(null);
+  const [toolActivities, setToolActivities] = useState<ToolActivity[]>([]);
+  const [heartbeatTick, setHeartbeatTick] = useState(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [claudeSessionId, setClaudeSessionId] = useState<string | null>(null);
   const [hasUnread, setHasUnread] = useState(false);
+  const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const initialized = useRef(false);
@@ -159,7 +163,7 @@ export function AssistantFAB({ pathname }: AssistantFABProps) {
       setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
       setStreaming(true);
       setStreamingText("");
-      setToolStatus(null);
+      let hadWrites = false;
 
       try {
         const response = await fetch("/api/assistant", {
@@ -204,26 +208,54 @@ export function AssistantFAB({ pathname }: AssistantFABProps) {
                 case "text_delta":
                   accumulatedText += event.text;
                   setStreamingText(accumulatedText);
+                  setStatusMessage(null);
                   break;
 
                 case "tool_start":
-                  setToolStatus(getToolLabel(event.toolName));
+                  setStatusMessage(null);
+                  setToolActivities(prev => [...prev, {
+                    toolName: event.toolName,
+                    toolUseId: event.toolUseId,
+                    label: getToolLabel(event.toolName),
+                    startedAt: Date.now(),
+                  }]);
                   break;
 
                 case "tool_progress":
-                  setToolStatus(getToolLabel(event.toolName));
                   break;
 
-                case "tool_result":
-                  setToolStatus(null);
-                  // Audit trail: toast for write tool completions
+                case "tool_complete": {
+                  const completedAt = Date.now();
+                  setToolActivities(prev =>
+                    prev.map(a =>
+                      a.toolUseId === event.toolUseId && a.durationMs == null
+                        ? {
+                            ...a,
+                            durationMs: event.durationMs ?? completedAt - a.startedAt,
+                            isError: event.isError,
+                          }
+                        : a,
+                    ),
+                  );
+                  if (event.toolName && isWriteTool(event.toolName)) {
+                    hadWrites = true;
+                  }
+                  break;
+                }
+
+                case "tool_result": {
                   if (event.toolName && isWriteTool(event.toolName) && event.summary) {
                     toast(event.summary, "info");
                   }
                   break;
+                }
+
+                case "heartbeat":
+                  setHeartbeatTick(t => t + 1);
+                  break;
 
                 case "status":
-                  setToolStatus(event.message);
+                  setStatusMessage(event.message);
                   break;
 
                 case "message_complete":
@@ -268,11 +300,15 @@ export function AssistantFAB({ pathname }: AssistantFABProps) {
         ]);
       } finally {
         setStreaming(false);
-        setToolStatus(null);
+        setToolActivities([]);
+        setHeartbeatTick(0);
+        setStatusMessage(null);
         setStreamingText("");
+        // Refresh server component data if any write tools were called
+        if (hadWrites) router.refresh();
       }
     },
-    [claudeSessionId, pathname, streaming, toast],
+    [claudeSessionId, pathname, streaming, toast, router],
   );
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -288,7 +324,9 @@ export function AssistantFAB({ pathname }: AssistantFABProps) {
     setClaudeSessionId(null);
     setInput("");
     setStreamingText("");
-    setToolStatus(null);
+    setToolActivities([]);
+    setHeartbeatTick(0);
+    setStatusMessage(null);
   }
 
   const hasMessages = messages.length > 0 || streaming;
@@ -355,10 +393,41 @@ export function AssistantFAB({ pathname }: AssistantFABProps) {
 
           {streamingText && <ChatMessage role="assistant" content={streamingText} />}
 
-          {streaming && (streamingText === "" || toolStatus) && (
-            <div className="flex items-center gap-2 py-3 text-xs text-muted justify-center">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
-              <span>{toolStatus ?? "Thinking..."}</span>
+          {streaming && (streamingText === "" || toolActivities.some(a => a.durationMs == null)) && (
+            <div className="flex flex-col items-center gap-1.5 py-3">
+              {toolActivities.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  {toolActivities.map((activity, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-xs text-muted">
+                      {activity.durationMs != null ? (
+                        <Check className="h-3 w-3 text-green-500/70" />
+                      ) : (
+                        <Loader2 className="h-3 w-3 animate-spin text-accent" />
+                      )}
+                      <span>{activity.label}</span>
+                      {activity.durationMs != null && (
+                        <span className="opacity-50">{(activity.durationMs / 1000).toFixed(1)}s</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!toolActivities.some(a => a.durationMs == null) && (
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                  <span>{statusMessage ?? "Thinking..."}</span>
+                </div>
+              )}
+              <span className="relative mt-2 flex h-1.5 w-1.5">
+                {heartbeatTick > 0 && (
+                  <span
+                    key={heartbeatTick}
+                    className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                    style={{ animation: "ping 1s cubic-bezier(0, 0, 0.2, 1) 1" }}
+                  />
+                )}
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500/50" />
+              </span>
             </div>
           )}
 

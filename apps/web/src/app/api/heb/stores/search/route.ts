@@ -36,6 +36,7 @@ export async function GET(request: Request) {
       address: s.address
         ? `${s.address.streetAddress}, ${s.address.city}, ${s.address.state} ${s.address.zip}`
         : "",
+      postalCode: s.address?.zip || undefined,
     }));
 
     return NextResponse.json(results);

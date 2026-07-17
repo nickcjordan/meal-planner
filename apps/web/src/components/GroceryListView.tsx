@@ -12,14 +12,16 @@ import {
   ClipboardCopy,
   ArrowDownWideNarrow,
   LayoutGrid,
+  MapPin,
   Check,
 } from "lucide-react";
 import type { GroceryList, GroceryListItem, HebEnrichmentResult } from "@meal-planner/types";
-import { CATEGORY_ICONS, groupByCategory } from "@/lib/categories";
+import { CATEGORY_ICONS, AISLE_CATEGORY_ORDER, groupByCategory } from "@/lib/categories";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { formatWeekOf } from "@/lib/week";
 
-type SortMode = "category" | "price";
+type SortMode = "category" | "aisle" | "price";
 
 function getSourceLabel(item: GroceryListItem): { text: string; color: string } | null {
   if (item.sources.length === 0) return null;
@@ -39,7 +41,7 @@ function getSourceLabel(item: GroceryListItem): { text: string; color: string } 
   if (first.type === "staple") return { text: "staple", color: "text-green-500 bg-green-500/10" };
   if (first.type === "recipe") {
     const recipeCount = item.sources.filter((s) => s.type === "recipe").length;
-    const recipeName = first.recipeName;
+    const { recipeName } = first;
     return {
       text: recipeCount > 1 ? `${recipeName} +${recipeCount - 1}` : recipeName,
       color: "text-accent bg-accent/10",
@@ -57,6 +59,7 @@ export function GroceryListView() {
   const [enriching, setEnriching] = useState(false);
   const [enrichStage, setEnrichStage] = useState("");
   const [enrichResult, setEnrichResult] = useState<HebEnrichmentResult | null>(null);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
   const [hebConnected, setHebConnected] = useState(false);
   const [addItemName, setAddItemName] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("category");
@@ -68,7 +71,15 @@ export function GroceryListView() {
   const [mergeDismissed, setMergeDismissed] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const { toast } = useToast();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Per-item debounce for toggle saves: one pending timer + desired `checked`
+  // value keyed by item id, so toggling several items rapidly never clobbers.
+  const pendingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingChecked = useRef<Map<string, boolean>>(new Map());
+  // Single serialized write queue. Every item mutation (checked PATCH and DELETE)
+  // hits /api/grocery/items/[id], which is a whole-list read-modify-write on the
+  // server. Running two in parallel means the later save clobbers the earlier one,
+  // so we chain them: at most one item-mutation request is ever in flight.
+  const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(() => {
     fetch("/api/grocery")
@@ -78,7 +89,7 @@ export function GroceryListView() {
 
     fetch("/api/heb/status")
       .then((r) => r.json())
-      .then((data) => setHebConnected(!!data.store))
+      .then((data) => setHebConnected(!!data.connected))
       .catch(() => setHebConnected(false));
 
     // Check for unmerged session
@@ -102,44 +113,111 @@ export function GroceryListView() {
     }
   }, [list, unmergedSessionId]);
 
-  const persistItems = useCallback(
-    (items: GroceryListItem[]) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        fetch("/api/grocery", {
+  // Serialize a mutation onto the single write queue so only one item-mutation
+  // request is ever in flight. The chain itself never rejects (so one failure
+  // doesn't stall the queue), but the returned promise settles with this task.
+  const enqueueWrite = useCallback((task: () => Promise<unknown>) => {
+    const run = writeQueueRef.current.then(() => task());
+    writeQueueRef.current = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }, []);
+
+  // Fire a single per-item checked PATCH through the write queue.
+  const sendCheckedPatch = useCallback(
+    (id: string, checked: boolean) =>
+      enqueueWrite(() =>
+        fetch(`/api/grocery/items/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items }),
-        });
-      }, 500);
-    },
-    [],
+          body: JSON.stringify({ checked }),
+        }).catch((err) => console.error("Failed to update item:", err)),
+      ),
+    [enqueueWrite],
   );
+
+  // Debounce a toggle save for one item without disturbing others' timers.
+  const scheduleCheckedSave = useCallback(
+    (id: string, checked: boolean) => {
+      pendingChecked.current.set(id, checked);
+      const existing = pendingTimers.current.get(id);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        pendingTimers.current.delete(id);
+        const desired = pendingChecked.current.get(id);
+        pendingChecked.current.delete(id);
+        if (desired !== undefined) void sendCheckedPatch(id, desired);
+      }, 500);
+      pendingTimers.current.set(id, timer);
+    },
+    [sendCheckedPatch],
+  );
+
+  // Cancel every pending debounce timer, enqueue its save, then await the current
+  // tail of the write queue. Because all mutations (checked PATCHes AND DELETEs)
+  // are serialized through that queue, awaiting the tail guarantees every issued
+  // item mutation has settled. Called before any action whose server call reads
+  // the persisted list (add/clear/merge), so a toggle or delete can never land
+  // after — and clobber — the action's own write.
+  const flushPendingSaves = useCallback(async () => {
+    for (const [id, timer] of pendingTimers.current) {
+      clearTimeout(timer);
+      const desired = pendingChecked.current.get(id);
+      pendingChecked.current.delete(id);
+      if (desired !== undefined) sendCheckedPatch(id, desired);
+    }
+    pendingTimers.current.clear();
+    await writeQueueRef.current;
+  }, [sendCheckedPatch]);
 
   function toggleItem(id: string) {
     if (!list) return;
-    const updated = list.items.map((item) =>
-      item.id === id ? { ...item, checked: !item.checked } : item,
-    );
+    let nextChecked = false;
+    const updated = list.items.map((item) => {
+      if (item.id === id) {
+        nextChecked = !item.checked;
+        return { ...item, checked: nextChecked };
+      }
+      return item;
+    });
     setList({ ...list, items: updated });
-    persistItems(updated);
+    scheduleCheckedSave(id, nextChecked);
   }
 
   function removeItem(id: string) {
     if (!list) return;
+    // Cancel any pending toggle for this item — we're deleting it outright.
+    const timer = pendingTimers.current.get(id);
+    if (timer) clearTimeout(timer);
+    pendingTimers.current.delete(id);
+    pendingChecked.current.delete(id);
+
     const updated = list.items.filter((item) => item.id !== id);
     setList({ ...list, items: updated });
-    persistItems(updated);
+    // Serialize the DELETE through the write queue so it can't land after — and
+    // clobber — a later add/clear/merge that flushPendingSaves() awaited.
+    enqueueWrite(() =>
+      fetch(`/api/grocery/items/${id}`, { method: "DELETE" }).catch((err) =>
+        console.error("Failed to remove item:", err),
+      ),
+    );
   }
 
   async function handleAddItem() {
     if (!list || !addItemName.trim()) return;
+    await flushPendingSaves();
     try {
-      const res = await fetch("/api/grocery/items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: addItemName.trim() }),
-      });
+      // The add itself rides the write queue too, so a toggle/delete issued
+      // while this request is in flight lands after it — not racing it.
+      const res = (await enqueueWrite(() =>
+        fetch("/api/grocery/items", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: addItemName.trim() }),
+        }),
+      )) as Response;
       if (res.ok) {
         const data = await res.json();
         setList(data.list);
@@ -158,7 +236,13 @@ export function GroceryListView() {
     setClearingChecked(true);
     setShowClearConfirm(false);
     try {
-      const res = await fetch("/api/grocery/clear-checked", { method: "POST" });
+      // Land any debounced toggles first so the server clears exactly what's
+      // checked, and ride the write queue so a toggle/delete issued while this
+      // request is in flight lands after it — not racing it.
+      await flushPendingSaves();
+      const res = (await enqueueWrite(() =>
+        fetch("/api/grocery/clear-checked", { method: "POST" }),
+      )) as Response;
       if (res.ok) {
         const data = await res.json();
         setList(data.list);
@@ -191,15 +275,24 @@ export function GroceryListView() {
     if (!unmergedSessionId) return;
     setMerging(true);
     try {
-      const res = await fetch("/api/grocery/merge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: unmergedSessionId }),
-      });
+      // Land any debounced toggles first so the merge reads the persisted list,
+      // and ride the write queue so a toggle/delete issued while the merge is
+      // in flight lands after it — not racing it.
+      await flushPendingSaves();
+      const res = (await enqueueWrite(() =>
+        fetch("/api/grocery/merge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: unmergedSessionId }),
+        }),
+      )) as Response;
       if (res.ok) {
         const data = await res.json();
         setList(data.list);
         setUnmergedSessionId(null);
+        if (data.resynced) {
+          toast("Grocery list resynced with the updated plan");
+        }
       }
     } catch (err) {
       console.error("Failed to merge:", err);
@@ -212,9 +305,12 @@ export function GroceryListView() {
     setEnriching(true);
     setEnrichStage("Checking session...");
     setEnrichResult(null);
+    setEnrichError(null);
+    let sawComplete = false;
     try {
       const res = await fetch("/api/grocery/enrich", { method: "POST" });
       if (!res.ok || !res.body) {
+        setEnrichError("Could not start H-E-B enrichment. Please try again.");
         setEnriching(false);
         return;
       }
@@ -257,16 +353,30 @@ export function GroceryListView() {
                 );
               }
               break;
+            case "item_error":
+              // One item failed to search/match — keep going, but surface it so
+              // the spinner isn't the only signal something went wrong.
+              setEnrichStage(`Trouble with ${event.itemName}: ${event.reason}`);
+              break;
+            case "error":
+              setEnrichError(event.message || "H-E-B enrichment failed. Please try again.");
+              break;
             case "complete":
+              sawComplete = true;
               setList(event.list);
               setEnrichResult(event.result);
               break;
           }
         }
       }
+    } catch {
+      setEnrichError("H-E-B enrichment was interrupted. Please try again.");
     } finally {
       setEnriching(false);
       setEnrichStage("");
+      if (!sawComplete) {
+        setEnrichError((prev) => prev ?? "H-E-B enrichment ended unexpectedly. Please try again.");
+      }
     }
   }
 
@@ -306,6 +416,25 @@ export function GroceryListView() {
       (a, b) => (b.heb?.price?.amount ?? 0) - (a.heb?.price?.amount ?? 0),
     );
     displayGroups = new Map([["all", sorted]]);
+  } else if (sortMode === "aisle") {
+    const hasAisleData = list.items.some((i) => i.heb?.aisleLocation);
+    if (hasAisleData) {
+      const grouped = new Map<string, GroceryListItem[]>();
+      for (const item of list.items) {
+        const key = item.heb?.aisleLocation ?? "Other";
+        const bucket = grouped.get(key) ?? [];
+        bucket.push(item);
+        grouped.set(key, bucket);
+      }
+      const sorted = Array.from(grouped.entries()).sort(([a], [b]) => {
+        if (a === "Other") return 1;
+        if (b === "Other") return -1;
+        return a.localeCompare(b);
+      });
+      displayGroups = new Map(sorted);
+    } else {
+      displayGroups = groupByCategory(list.items, AISLE_CATEGORY_ORDER);
+    }
   } else {
     displayGroups = groupByCategory(list.items);
   }
@@ -324,10 +453,7 @@ export function GroceryListView() {
                 <span className="font-semibold">
                   Week of{" "}
                   {unmergedWeekOf
-                    ? new Date(unmergedWeekOf).toLocaleDateString("en-US", {
-                        month: "long",
-                        day: "numeric",
-                      })
+                    ? formatWeekOf(unmergedWeekOf, { month: "long", day: "numeric" })
                     : "this week"}
                 </span>{" "}
                 meal plan is ready to add.
@@ -407,28 +533,46 @@ export function GroceryListView() {
             )}
           </div>
         )}
+
+        {enrichError && !enriching && (
+          <div className="mt-3 flex items-center gap-1.5 text-xs text-red-500">
+            <X className="h-3.5 w-3.5 shrink-0" />
+            {enrichError}
+          </div>
+        )}
       </div>
 
       {/* Toolbar */}
       {totalCount > 0 && (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {/* Sort toggle */}
-          {hasEnrichment && (
-            <div className="flex rounded-lg border border-card-border overflow-hidden">
-              <button
-                onClick={() => setSortMode("category")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
-                  sortMode === "category"
-                    ? "bg-accent text-white"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Category
-              </button>
+          <div className="flex rounded-lg border border-card-border overflow-hidden">
+            <button
+              onClick={() => setSortMode("category")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                sortMode === "category"
+                  ? "bg-accent text-white"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Category
+            </button>
+            <button
+              onClick={() => setSortMode("aisle")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-l border-card-border ${
+                sortMode === "aisle"
+                  ? "bg-accent text-white"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              <MapPin className="h-3.5 w-3.5" />
+              Aisle
+            </button>
+            {hasEnrichment && (
               <button
                 onClick={() => setSortMode("price")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-l border-card-border ${
                   sortMode === "price"
                     ? "bg-accent text-white"
                     : "text-muted hover:text-foreground"
@@ -437,8 +581,8 @@ export function GroceryListView() {
                 <ArrowDownWideNarrow className="h-3.5 w-3.5" />
                 Price
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* HEB enrichment */}
           {hebConnected && !enriching && (
@@ -514,36 +658,40 @@ export function GroceryListView() {
           const catChecked = groupItems.filter((i) => i.checked).length;
           const catTotal = groupItems.length;
           const catEstimate = groupItems.reduce((s, i) => s + (i.heb?.price?.amount ?? 0), 0);
-          const isAllGroup = groupKey === "all";
 
           return (
             <div key={groupKey} className="rounded-xl border border-card-border bg-card overflow-hidden">
-              {/* Category header */}
-              {!isAllGroup && (
-                <div className="flex items-center justify-between px-5 py-3 border-b border-card-border bg-tag-bg/30">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">{CATEGORY_ICONS[groupKey] ?? "📦"}</span>
-                    <h3 className="text-sm font-semibold text-foreground capitalize">{groupKey}</h3>
-                    <span className="text-xs text-muted">
-                      {catChecked}/{catTotal}
-                    </span>
-                  </div>
-                  {hasEnrichment && catEstimate > 0 && (
-                    <span className="text-xs font-medium text-muted">
-                      ${catEstimate.toFixed(2)}
-                    </span>
-                  )}
-                </div>
-              )}
-              {isAllGroup && (
+              {/* Group header */}
+              {sortMode === "price" ? (
                 <div className="flex items-center justify-between px-5 py-3 border-b border-card-border bg-tag-bg/30">
                   <div className="flex items-center gap-2">
                     <ArrowDownWideNarrow className="h-4 w-4 text-muted" />
                     <h3 className="text-sm font-semibold text-foreground">Sorted by Price</h3>
-                    <span className="text-xs text-muted">
-                      {catChecked}/{catTotal}
-                    </span>
+                    <span className="text-xs text-muted">{catChecked}/{catTotal}</span>
                   </div>
+                </div>
+              ) : sortMode === "aisle" ? (
+                <div className="flex items-center justify-between px-5 py-3 border-b border-card-border bg-tag-bg/30">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-3.5 w-3.5 text-accent/60 shrink-0" />
+                    <span className="text-base">{CATEGORY_ICONS[groupKey] ?? "📦"}</span>
+                    <h3 className="text-sm font-semibold text-foreground capitalize">{groupKey}</h3>
+                    <span className="text-xs text-muted">{catChecked}/{catTotal}</span>
+                  </div>
+                  {hasEnrichment && catEstimate > 0 && (
+                    <span className="text-xs font-medium text-muted">${catEstimate.toFixed(2)}</span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between px-5 py-3 border-b border-card-border bg-tag-bg/30">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{CATEGORY_ICONS[groupKey] ?? "📦"}</span>
+                    <h3 className="text-sm font-semibold text-foreground capitalize">{groupKey}</h3>
+                    <span className="text-xs text-muted">{catChecked}/{catTotal}</span>
+                  </div>
+                  {hasEnrichment && catEstimate > 0 && (
+                    <span className="text-xs font-medium text-muted">${catEstimate.toFixed(2)}</span>
+                  )}
                 </div>
               )}
 

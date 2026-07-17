@@ -26,6 +26,9 @@ export type {
   ImportResult,
   BulkScanEvent,
 } from "./types.js";
+export { applySwaps } from "./swaps.js";
+export type { SwapRule, AppliedSwap } from "./swaps.js";
+export { normalizeTokens, namesMatchExact, nameIsSubset } from "./matching.js";
 export type { TextParseResult } from "./text/parse.js";
 export type {
   MealDbSearchResult,

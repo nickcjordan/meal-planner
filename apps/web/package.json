@@ -12,6 +12,7 @@
     "test:integration": "echo 'no integration tests yet'"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3",
     "@meal-planner/agent": "*",
     "@meal-planner/db": "*",
     "@meal-planner/heb": "*",

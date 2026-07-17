@@ -1,10 +1,10 @@
-import { PutCommand, GetCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import type {
   PlanningSession,
   CreateSessionInput,
   DynamoDBRecord,
 } from "@meal-planner/types";
-import { getDocClient, TABLE_NAME, GSI1_NAME } from "./client.js";
+import { getDocClient, TABLE_NAME, GSI1_NAME, scanAll, queryAll, stripUndefined } from "./client.js";
 import { randomUUID } from "crypto";
 
 type SessionRecord = DynamoDBRecord & PlanningSession;
@@ -65,7 +65,7 @@ export async function updateSession(
 
   const updated: PlanningSession = {
     ...existing,
-    ...updates,
+    ...stripUndefined(updates),
     id,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
@@ -82,31 +82,32 @@ export async function updateSession(
 }
 
 export async function getSessionByWeek(weekOf: string): Promise<PlanningSession | null> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      IndexName: GSI1_NAME,
-      KeyConditionExpression: "GSI1PK = :pk",
-      ExpressionAttributeValues: { ":pk": `WEEK#${weekOf}` },
-      Limit: 1,
-    }),
-  );
+  // Fetch every session for the week (no uniqueness guard exists at create) and
+  // return the most recently updated one so reads/updates bind deterministically.
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    IndexName: GSI1_NAME,
+    KeyConditionExpression: "GSI1PK = :pk",
+    ExpressionAttributeValues: { ":pk": `WEEK#${weekOf}` },
+  });
 
-  if (!result.Items?.length) return null;
-  return fromRecord(result.Items[0] as SessionRecord);
+  if (items.length === 0) return null;
+
+  const sessions = items.map((item) => fromRecord(item as SessionRecord));
+  return sessions.reduce((latest, s) =>
+    s.updatedAt > latest.updatedAt ? s : latest,
+  );
 }
 
 export async function getRecentSessions(limit: number = 8): Promise<PlanningSession[]> {
   // Scan for session entities and sort client-side by weekOf descending
-  const result = await getDocClient().send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: "entityType = :type",
-      ExpressionAttributeValues: { ":type": "SESSION" },
-    }),
-  );
+  const items = await scanAll({
+    TableName: TABLE_NAME,
+    FilterExpression: "entityType = :type",
+    ExpressionAttributeValues: { ":type": "SESSION" },
+  });
 
-  const sessions = (result.Items ?? [])
+  const sessions = items
     .map((item) => fromRecord(item as SessionRecord))
     .sort((a, b) => b.weekOf.localeCompare(a.weekOf));
 

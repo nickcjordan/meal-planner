@@ -19,9 +19,87 @@ export type EnrichmentEvent =
   | { type: "item_error"; index: number; total: number; itemName: string; reason: string }
   | { type: "complete"; items: ShoppingListItem[]; result: HebEnrichmentResult };
 
+/**
+ * Minimum Dice coefficient (over stemmed token sets) for a search result to be
+ * accepted as a confident match. Below this the item is left unenriched and
+ * counted as a failure rather than getting the wrong product's price/aisle.
+ */
+const MATCH_THRESHOLD = 0.4;
+
+/** Number of top search results considered when picking the best match. */
+const CANDIDATE_LIMIT = 5;
+
+/** Crude s/es plural stemming so "eggs" and "egg" share a token. */
+function stem(token: string): string {
+  if (token.length > 2 && token.endsWith("es")) return token.slice(0, -2);
+  if (token.length > 1 && token.endsWith("s")) return token.slice(0, -1);
+  return token;
+}
+
+/** Normalize a product/item name into a set of stemmed tokens. */
+function tokenize(name: string): Set<string> {
+  return new Set(
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(stem),
+  );
+}
+
+/** Dice coefficient over two token sets: 2·|A∩B| / (|A|+|B|). */
+export function diceCoefficient(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) intersection++;
+  }
+  return (2 * intersection) / (a.size + b.size);
+}
+
+/** Name-similarity score (0–1) between a query and a candidate product name. */
+export function nameSimilarity(itemName: string, productName: string): number {
+  return diceCoefficient(tokenize(itemName), tokenize(productName));
+}
+
+/** A search candidate reduced to what the match gate needs. */
+export interface MatchCandidate {
+  name: string;
+  inStock: boolean;
+}
+
+/**
+ * Pick the best confident match among search candidates for a query item.
+ * Applies the Dice similarity threshold, then prefers in-stock, then the
+ * highest score. Returns the index of the chosen candidate, or `null` when no
+ * candidate clears the threshold.
+ */
+export function selectBestCandidate(
+  itemName: string,
+  candidates: MatchCandidate[],
+): number | null {
+  const queryTokens = tokenize(itemName);
+
+  const qualifying = candidates
+    .map((c, index) => ({
+      index,
+      score: diceCoefficient(queryTokens, tokenize(c.name)),
+      inStock: c.inStock,
+    }))
+    .filter((c) => c.score >= MATCH_THRESHOLD)
+    .sort((a, b) => {
+      if (a.inStock !== b.inStock) return a.inStock ? -1 : 1;
+      return b.score - a.score;
+    });
+
+  return qualifying.length > 0 ? qualifying[0].index : null;
+}
+
 function toProductMatch(product: HebRawProduct): HebProductMatch {
   const sku = product.SKUs[0];
   const priceInfo = sku?.contextPrices[0]?.salePrice;
+  const aisleLocation = sku?.storeLocation?.location || undefined;
 
   return {
     productId: product.id,
@@ -34,25 +112,43 @@ function toProductMatch(product: HebRawProduct): HebProductMatch {
       : undefined,
     isOnSale: sku?.contextPrices[0]?.isOnSale ?? false,
     inStock: product.inventory.inventoryState === "IN_STOCK",
+    aisleLocation,
     matchedAt: new Date().toISOString(),
   };
 }
+
+/** Result of attempting to match one shopping-list item to an HEB product. */
+type MatchOutcome =
+  | { matched: true; product: HebProductMatch }
+  | { matched: false; reason: string };
 
 async function matchProduct(
   cookieHeader: string,
   storeId: number,
   itemName: string,
-): Promise<HebProductMatch | null> {
-  const products = await searchProducts(cookieHeader, itemName, storeId, 5);
-
-  if (products.length === 0) return null;
-
-  const inStock = products.filter(
-    (p) => p.inventory.inventoryState === "IN_STOCK",
+): Promise<MatchOutcome> {
+  const products = await searchProducts(
+    cookieHeader,
+    itemName,
+    storeId,
+    CANDIDATE_LIMIT,
   );
-  const best = inStock.length > 0 ? inStock[0] : products[0];
 
-  return toProductMatch(best);
+  if (products.length === 0) return { matched: false, reason: "No results" };
+
+  const chosen = selectBestCandidate(
+    itemName,
+    products.map((p) => ({
+      name: p.displayName,
+      inStock: p.inventory.inventoryState === "IN_STOCK",
+    })),
+  );
+
+  if (chosen === null) {
+    return { matched: false, reason: "No confident match" };
+  }
+
+  return { matched: true, product: toProductMatch(products[chosen]) };
 }
 
 /**
@@ -68,7 +164,7 @@ export async function* enrichShoppingListStream(
   // Phase 1: Session
   yield { type: "session_check" };
 
-  const fresh = await hasFreshCookies();
+  const fresh = await hasFreshCookies(store.storeId);
   if (!fresh) {
     yield { type: "session_refresh", message: "Launching browser to establish HEB session..." };
   }
@@ -105,10 +201,10 @@ export async function* enrichShoppingListStream(
     yield { type: "item_start", index: i, total, itemName: item.name };
 
     try {
-      const match = await matchProduct(cookieHeader, storeId, item.name);
+      const outcome = await matchProduct(cookieHeader, storeId, item.name);
 
-      if (match) {
-        enrichedItems.push({ ...item, heb: match });
+      if (outcome.matched) {
+        enrichedItems.push({ ...item, heb: outcome.product });
         enrichedCount++;
         yield {
           type: "item_done",
@@ -116,12 +212,12 @@ export async function* enrichShoppingListStream(
           total,
           itemName: item.name,
           matched: true,
-          productName: match.name,
-          price: match.price?.formatted,
+          productName: outcome.product.name,
+          price: outcome.product.price?.formatted,
         };
       } else {
         enrichedItems.push(item);
-        failures.push({ itemName: item.name, reason: "No results" });
+        failures.push({ itemName: item.name, reason: outcome.reason });
         yield { type: "item_done", index: i, total, itemName: item.name, matched: false };
       }
 
@@ -132,12 +228,16 @@ export async function* enrichShoppingListStream(
 
       if (message.includes("non-JSON") || message.includes("session expired")) {
         sessionExpired = true;
+        // Count the item that errored plus every remaining unprocessed item as
+        // a failure, so the matched-of-total summary stays honest instead of
+        // silently dropping the tail of the list.
         enrichedItems.push(item);
-        for (const remaining of items.slice(enrichedItems.length)) {
-          enrichedItems.push(remaining);
-        }
         failures.push({ itemName: item.name, reason: "Session expired" });
         yield { type: "item_error", index: i, total, itemName: item.name, reason: "Session expired" };
+        for (const remaining of items.slice(i + 1)) {
+          enrichedItems.push(remaining);
+          failures.push({ itemName: remaining.name, reason: "Session expired" });
+        }
         break;
       }
 

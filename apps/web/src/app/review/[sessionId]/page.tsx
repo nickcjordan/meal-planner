@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { getSession, getFeedbackForSession } from "@meal-planner/db";
 import { FeedbackForm } from "@/components/FeedbackForm";
 import { StarRating } from "@/components/StarRating";
+import { formatWeekOf } from "@/lib/week";
 
 export default async function ReviewPage({
   params,
@@ -22,14 +23,14 @@ export default async function ReviewPage({
   return (
     <div>
       <Link
-        href={`/history/${session.id}`}
+        href={`/settings/history/${session.id}`}
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" /> Back to session
       </Link>
       <h1 className="mb-2 text-2xl font-bold text-foreground">
         Review Week of{" "}
-        {new Date(session.weekOf).toLocaleDateString("en-US", {
+        {formatWeekOf(session.weekOf, {
           month: "long",
           day: "numeric",
           year: "numeric",

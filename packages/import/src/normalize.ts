@@ -38,19 +38,27 @@ export function normalize(
 
   const data = parsed.data as CreateRecipeInput;
 
-  // Standardize ingredient units
-  data.ingredients = data.ingredients.map((ing) => ({
-    ...ing,
-    unit: standardizeUnit(ing.unit),
+  // Standardize ingredient units across all sections
+  data.ingredientSections = data.ingredientSections.map((section) => ({
+    ...section,
+    items: section.items.map((ing) => ({
+      ...ing,
+      unit: standardizeUnit(ing.unit),
+    })),
   }));
 
   // Infer complexity if it wasn't explicitly set (default is "standard")
   // Only override if the data suggests it should be different
   if (!raw.complexity) {
-    data.complexity = inferComplexity(
-      data.ingredients.length,
-      data.steps.length,
+    const ingredientCount = data.ingredientSections.reduce(
+      (n, s) => n + s.items.length,
+      0,
     );
+    const stepCount = data.stepSections.reduce(
+      (n, s) => n + s.steps.length,
+      0,
+    );
+    data.complexity = inferComplexity(ingredientCount, stepCount);
   }
 
   return { success: true, data };

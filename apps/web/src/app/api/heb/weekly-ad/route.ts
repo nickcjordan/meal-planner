@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
-import { getWeeklyAd } from "@meal-planner/heb";
+import { getWeeklyAd, getHebStore } from "@meal-planner/heb";
+
+const DEFAULT_POSTAL = "78704";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const postalCode = searchParams.get("zip") ?? "78704";
     const flyerIdParam = searchParams.get("flyerId");
     const flyerId = flyerIdParam ? parseInt(flyerIdParam, 10) : undefined;
+
+    // Region the ad to the selected store's ZIP; an explicit `zip` query param
+    // overrides, and the hardcoded default backs both up.
+    const store = await getHebStore();
+    const postalCode =
+      searchParams.get("zip") ?? store.postalCode ?? DEFAULT_POSTAL;
 
     const data = await getWeeklyAd(postalCode, flyerId);
 

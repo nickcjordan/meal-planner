@@ -5,6 +5,7 @@ import {
   getShoppingList,
   saveShoppingList,
   listPantryItems,
+  getSidesBatch,
 } from "@meal-planner/db";
 import type { ShoppingListItem, ShoppingListCarryover, Ingredient } from "@meal-planner/types";
 import { filterPantryItems } from "@/lib/pantry-match";
@@ -78,8 +79,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     const allIngredients: { ingredient: Ingredient; recipeId: string }[] = [];
     for (const recipe of recipes) {
       if (!recipe) continue;
-      for (const ing of recipe.ingredients) {
-        allIngredients.push({ ingredient: ing, recipeId: recipe.id });
+      for (const section of recipe.ingredientSections) {
+        for (const ing of section.items) {
+          allIngredients.push({ ingredient: ing, recipeId: recipe.id });
+        }
       }
     }
 
@@ -95,6 +98,37 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
               category: ing.category,
             },
             recipeId: `extra:${extra.name}`,
+          });
+        }
+      }
+    }
+
+    // Include side ingredients (parity with the grocery merge pipeline):
+    // "ref" sides resolve their ingredients via getSidesBatch; "inline" sides use
+    // their own ingredient list directly.
+    const sideRefIds = new Set<string>();
+    for (const meal of session.meals) {
+      for (const side of meal.sides ?? []) {
+        if (side.kind === "ref") sideRefIds.add(side.sideId);
+      }
+    }
+    const sideBatch = sideRefIds.size > 0 ? await getSidesBatch([...sideRefIds]) : new Map();
+
+    for (const meal of session.meals) {
+      for (const side of meal.sides ?? []) {
+        const ingredients =
+          side.kind === "ref"
+            ? (sideBatch.get(side.sideId)?.ingredients ?? [])
+            : side.ingredients;
+        const sideName =
+          side.kind === "ref"
+            ? (sideBatch.get(side.sideId)?.name ?? side.sideId)
+            : side.name;
+
+        for (const ing of ingredients) {
+          allIngredients.push({
+            ingredient: { name: ing.name, quantity: ing.quantity, unit: ing.unit, category: ing.category },
+            recipeId: `side:${sideName}`,
           });
         }
       }
@@ -130,6 +164,35 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
           source: "staple",
           isFlexible: staple.style === "flexible",
           flexibleDescription: staple.description,
+        });
+      }
+    }
+
+    // Add carryover items the user marked as "I need this" as purchasable lines
+    // (parity with the grocery merge pipeline). "confirmed" carryovers remain a
+    // reminder only (handled below).
+    for (const carryover of session.carryoverItems ?? []) {
+      if (carryover.status !== "need") continue;
+      const name = carryover.name.toLowerCase().trim();
+      const unit = carryover.unit.toLowerCase().trim();
+      const existingIndex = items.findIndex(
+        (item) =>
+          item.name.toLowerCase().trim() === name &&
+          item.unit.toLowerCase().trim() === unit,
+      );
+      if (existingIndex >= 0) {
+        items[existingIndex].quantity =
+          Math.round(
+            (items[existingIndex].quantity + carryover.neededFor.requiredQuantity) * 100,
+          ) / 100;
+      } else {
+        items.push({
+          name: carryover.name,
+          quantity: carryover.neededFor.requiredQuantity,
+          unit: carryover.unit,
+          category: "other",
+          recipeIds: [],
+          checked: false,
         });
       }
     }

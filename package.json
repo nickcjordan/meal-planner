@@ -12,7 +12,9 @@
     "test:integration": "turbo run test:integration --force",
     "typecheck": "turbo run typecheck --force",
     "setup:db": "tsx scripts/setup-dynamodb.ts",
-    "seed": "tsx scripts/seed-recipes.ts"
+    "seed": "tsx scripts/seed-recipes.ts",
+    "seed:sides": "tsx scripts/seed-sides.ts",
+    "backfill:planning": "tsx scripts/backfill-planning-fields.ts"
   },
   "devDependencies": {
     "turbo": "^2",

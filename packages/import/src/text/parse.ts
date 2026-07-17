@@ -11,27 +11,65 @@ You MUST respond with ONLY a valid JSON object (no markdown, no code fences, no 
 {
   "name": "Recipe Name",
   "description": "Brief description",
-  "ingredients": [
-    { "name": "ingredient name", "quantity": 2, "unit": "cup", "category": "produce" }
+  "ingredientSections": [
+    {
+      "header": "optional section name or omit for simple recipes",
+      "items": [
+        { "name": "ingredient name", "quantity": 2, "unit": "cup", "category": "produce", "prep": "diced" }
+      ]
+    }
   ],
-  "steps": ["Step 1", "Step 2"],
+  "stepSections": [
+    {
+      "header": "optional section name or omit for simple recipes",
+      "steps": ["Step 1", "Step 2"]
+    }
+  ],
+  "enrichedStepSections": [
+    {
+      "header": "optional section name or omit for simple recipes",
+      "steps": [
+        {
+          "text": "Step 1 text (unchanged from stepSections)",
+          "ingredients": [
+            { "name": "exact ingredient name", "prep": "diced", "quantityOverride": 0.5 }
+          ]
+        }
+      ]
+    }
+  ],
   "cookTime": 30,
   "prepTime": 15,
+  "inactiveTime": 0,
   "servings": 4,
+  "yieldDescription": "optional, e.g. 'makes 24 cookies'",
   "tags": ["tag1", "tag2"],
   "categories": ["dinner"],
-  "complexity": "standard"
+  "complexity": "standard",
+  "notes": ["optional tips or make-ahead notes"],
+  "equipment": ["optional equipment needed"],
+  "storage": {
+    "makeAhead": "optional make-ahead instructions",
+    "refrigerate": "optional fridge storage info",
+    "freeze": "optional freezer storage info"
+  }
 }
 
 Rules:
+- For simple recipes with no natural grouping, use a single section with no "header" field
+- If the recipe has distinct parts (e.g. sauce, dough, filling), use multiple sections with headers
 - quantity must be a number (convert fractions: 1/2 = 0.5)
 - unit: cup, tbsp, tsp, oz, lb, g, ml, clove, can, piece, etc.
 - category: produce, meat, seafood, dairy, pantry, spices, canned, frozen, bakery, condiments, other
+- prep: how to prepare an ingredient before/during cooking — "diced", "minced", "thinly sliced", "roughly chopped", "grated", "at room temperature", etc. Omit if not applicable.
 - complexity: "staple" (very simple), "standard" (typical), "involved" (complex)
 - cookTime and prepTime in minutes; estimate if not stated
+- inactiveTime: marinating, resting, chilling time in minutes (0 if none)
 - tags: include cuisine type, main protein, descriptors
+- Omit optional fields (notes, equipment, storage, yieldDescription, inactiveTime) if not applicable
 - If the text does not contain a recipe, respond with: {"error": "No recipe found in the provided text"}
 - If information is missing, make reasonable defaults (e.g. servings: 4)
+- enrichedStepSections: for each step in stepSections, identify which ingredients from the recipe are used in that step. Keep the exact same step text and same section structure. For each ingredient used in a step include its name (must match exactly), optional prep method for that step, and quantityOverride only if the step uses a partial amount of the total ingredient quantity. Always output this field.
 
 Respond with ONLY the JSON. No other text.`;
 

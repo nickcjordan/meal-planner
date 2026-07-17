@@ -39,6 +39,10 @@ export function BulkImportForm() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveSummary, setSaveSummary] = useState<{
+    imported: number;
+    failures: Array<{ name: string; messages: string[] }>;
+  } | null>(null);
   const [completed, setCompleted] = useState(0);
   const [total, setTotal] = useState(0);
   const [done, setDone] = useState(false);
@@ -55,6 +59,7 @@ export function BulkImportForm() {
       setTotal(0);
       setDone(false);
       setSaved(false);
+      setSaveSummary(null);
 
       const body =
         mode === "blog"
@@ -209,6 +214,8 @@ export function BulkImportForm() {
   async function handleSaveSelected() {
     if (selected.size === 0) return;
     setSaving(true);
+    setError(null);
+    setSaveSummary(null);
 
     const selectedRecipes = results
       .filter((_, i) => selected.has(i))
@@ -221,11 +228,40 @@ export function BulkImportForm() {
         body: JSON.stringify({ recipes: selectedRecipes }),
       });
 
-      if (res.ok) {
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setError((data && data.error) || "Failed to save recipes");
+        return;
+      }
+
+      // The route returns { imported, errors, duplicateWarnings, summary } and
+      // always responds 200 — even when every recipe failed validation. Inspect
+      // the body to report the truth instead of blindly showing success.
+      const importedCount = Array.isArray(data?.imported)
+        ? data.imported.length
+        : 0;
+      const rawErrors: Array<{ index: number; errors: string[] }> = Array.isArray(
+        data?.errors,
+      )
+        ? data.errors
+        : [];
+
+      const failures = rawErrors.map((e) => {
+        const failed = selectedRecipes[e.index] as { name?: string } | undefined;
+        return {
+          name: failed?.name?.trim() || `Recipe ${e.index + 1}`,
+          messages: Array.isArray(e.errors) ? e.errors : [],
+        };
+      });
+
+      if (importedCount > 0 && failures.length === 0) {
+        // Full success.
         setSaved(true);
       } else {
-        const errData = await res.json();
-        setError(errData.error || "Failed to save recipes");
+        // Partial success (some saved, some failed) or total failure (none
+        // saved) — surface the per-recipe errors either way.
+        setSaveSummary({ imported: importedCount, failures });
       }
     } catch {
       setError("Network error while saving");
@@ -412,6 +448,43 @@ export function BulkImportForm() {
           <Link href="/recipes" className="font-medium underline">
             View recipes
           </Link>
+        </div>
+      )}
+
+      {/* Partial success or total failure */}
+      {saveSummary && !saved && (
+        <div
+          className={`space-y-2 rounded-lg border p-4 text-sm ${
+            saveSummary.imported > 0
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              : "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p className="font-medium">
+              {saveSummary.imported > 0 ? (
+                <>
+                  Saved {saveSummary.imported} recipe
+                  {saveSummary.imported === 1 ? "" : "s"}, but{" "}
+                  {saveSummary.failures.length} failed.{" "}
+                  <Link href="/recipes" className="underline">
+                    View saved recipes
+                  </Link>
+                </>
+              ) : (
+                <>No recipes were saved — all {saveSummary.failures.length} failed.</>
+              )}
+            </p>
+          </div>
+          <ul className="ml-6 list-disc space-y-1">
+            {saveSummary.failures.map((f, i) => (
+              <li key={i}>
+                <span className="font-medium">{f.name}</span>
+                {f.messages.length > 0 && <>: {f.messages.join("; ")}</>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

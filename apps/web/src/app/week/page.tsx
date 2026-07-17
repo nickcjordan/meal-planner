@@ -1,12 +1,14 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { Calendar, ShoppingCart, History, Star } from "lucide-react";
 import { getSessionByWeek, getRecipesBatch, getFeedbackForSession } from "@meal-planner/db";
 import type { Recipe } from "@meal-planner/types";
-import { getCurrentMonday } from "@/lib/week";
+import { getPlanningMonday } from "@/lib/week";
 import { WeekMealList } from "@/components/WeekMealList";
 
 export default async function WeekPage() {
-  const weekOf = getCurrentMonday();
+  const weekOf = getPlanningMonday();
   const session = await getSessionByWeek(weekOf);
 
   if (!session || session.status === "draft") {
@@ -70,7 +72,7 @@ export default async function WeekPage() {
           Grocery List
         </Link>
         <Link
-          href="/history"
+          href="/settings/history"
           className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-card-border bg-card px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:border-accent/30 hover:text-foreground"
         >
           <History className="h-4 w-4" />

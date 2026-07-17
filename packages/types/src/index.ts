@@ -1,6 +1,12 @@
 export type {
   Ingredient,
+  IngredientSection,
+  StepSection,
+  StepIngredientRef,
+  EnrichedStep,
+  EnrichedStepSection,
   NutritionalInfo,
+  StorageInfo,
   Recipe,
   RecipeComplexity,
   CreateRecipeInput,
@@ -10,12 +16,22 @@ export type {
 export type {
   MealType,
   DayOfWeek,
+  PlannedSide,
   PlannedMeal,
   PlanExtra,
   SessionStatus,
   PlanningSession,
   CreateSessionInput,
 } from "./session.js";
+
+export type {
+  SideComplexity,
+  SideCategory,
+  SideIngredient,
+  Side,
+  CreateSideInput,
+  UpdateSideInput,
+} from "./side.js";
 
 export type { MealFeedback, CreateFeedbackInput } from "./feedback.js";
 
@@ -69,6 +85,11 @@ export type {
   DietaryAdaptation,
   CreateDietaryAdaptationInput,
 } from "./adaptation.js";
+
+export type {
+  IngredientSwap,
+  CreateIngredientSwapInput,
+} from "./swaps.js";
 
 export type { EntityType, DynamoDBRecord } from "./dynamo.js";
 

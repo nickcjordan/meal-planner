@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import type { CreateRecipeInput, NutritionalInfo } from "@meal-planner/types";
+import type { CreateRecipeInput, NutritionalInfo, StepSection } from "@meal-planner/types";
 import { parseIngredientString } from "../ingredients.js";
 import { parseIsoDuration, parseRecipeYield } from "./duration.js";
 
@@ -53,13 +53,11 @@ function extractImageUrl(image: any): string | undefined {
 }
 
 /**
- * Extract steps from the polymorphic recipeInstructions field.
- * Can be: string, string[], HowToStep[], HowToSection[], or mixed.
+ * Extract a flat list of step strings from a HowToStep array or mixed content.
  */
-function extractSteps(instructions: any): string[] {
+function extractFlatSteps(instructions: any): string[] {
   if (!instructions) return [];
   if (typeof instructions === "string") {
-    // Split a text blob into steps by newlines or numbered patterns
     return instructions
       .split(/\n+|\.\s+(?=\d)/)
       .map((s: string) => s.replace(/^\d+\.\s*/, "").trim())
@@ -76,20 +74,69 @@ function extractSteps(instructions: any): string[] {
           item.type === "HowToStep"
         ) {
           steps.push((item.text || item.name || "").trim());
-        } else if (
-          item["@type"] === "HowToSection" ||
-          item.type === "HowToSection"
-        ) {
-          // HowToSection contains nested itemListElement of HowToSteps
-          if (item.itemListElement) {
-            steps.push(...extractSteps(item.itemListElement));
-          }
         }
       }
     }
     return steps.filter(Boolean);
   }
   return [];
+}
+
+/**
+ * Extract step sections from the polymorphic recipeInstructions field.
+ * Preserves HowToSection headers when present.
+ * Can be: string, string[], HowToStep[], HowToSection[], or mixed.
+ */
+function extractStepSections(instructions: any): StepSection[] {
+  if (!instructions) return [{ steps: [] }];
+  if (typeof instructions === "string") {
+    const steps = instructions
+      .split(/\n+|\.\s+(?=\d)/)
+      .map((s: string) => s.replace(/^\d+\.\s*/, "").trim())
+      .filter(Boolean);
+    return [{ steps }];
+  }
+  if (Array.isArray(instructions)) {
+    const sections: StepSection[] = [];
+    const looseParts: string[] = [];
+
+    for (const item of instructions) {
+      if (typeof item === "string") {
+        looseParts.push(item.trim());
+      } else if (item && typeof item === "object") {
+        if (
+          item["@type"] === "HowToSection" ||
+          item.type === "HowToSection"
+        ) {
+          // Flush any loose steps before this section
+          if (looseParts.length > 0) {
+            sections.push({ steps: looseParts.filter(Boolean) });
+            looseParts.length = 0;
+          }
+          const sectionSteps = extractFlatSteps(item.itemListElement);
+          if (sectionSteps.length > 0) {
+            sections.push({
+              header: (item.name || "").trim() || undefined,
+              steps: sectionSteps,
+            });
+          }
+        } else if (
+          item["@type"] === "HowToStep" ||
+          item.type === "HowToStep"
+        ) {
+          looseParts.push((item.text || item.name || "").trim());
+        }
+      }
+    }
+
+    // Flush remaining loose steps
+    if (looseParts.length > 0) {
+      sections.push({ steps: looseParts.filter(Boolean) });
+    }
+
+    return sections.length > 0 ? sections : [{ steps: [] }];
+  }
+  return [{ steps: [] }];
 }
 
 /**
@@ -209,21 +256,22 @@ export function parseJsonLd(
   const rawIngredients: string[] = data.recipeIngredient || [];
   const ingredients = rawIngredients.map(parseIngredientString);
 
-  // Build the recipe
-  const recipe: CreateRecipeInput = {
+  // Build the recipe. `complexity` is intentionally omitted so that
+  // normalize()'s inference (which only fires when the field is absent) can run
+  // instead of everything being hardcoded to "standard".
+  const recipe = {
     name: (data.name || "").trim(),
     description: (data.description || "").trim(),
-    ingredients,
-    steps: extractSteps(data.recipeInstructions),
+    ingredientSections: [{ items: ingredients }],
+    stepSections: extractStepSections(data.recipeInstructions),
     cookTime: parseIsoDuration(data.cookTime),
     prepTime: parseIsoDuration(data.prepTime),
     servings: parseRecipeYield(data.recipeYield),
     tags: extractTags(data),
     categories: extractCategories(data),
-    complexity: "standard", // Will be overridden by normalize()
     nutritionalInfo: extractNutrition(data.nutrition),
     sourceUrl: pageUrl,
-  };
+  } as CreateRecipeInput;
 
   // Extract image
   let imageUrl = extractImageUrl(data.image);

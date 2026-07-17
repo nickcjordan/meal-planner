@@ -1,4 +1,5 @@
 import type { CreateRecipeInput, Ingredient } from "@meal-planner/types";
+import { standardizeUnit } from "../ingredients.js";
 
 const BASE_URL = "https://www.themealdb.com/api/json/v1/1";
 
@@ -183,7 +184,7 @@ function parseMeasure(measure: string): { quantity: number; unit: string } {
     const whole = parseInt(mixedMatch[1], 10);
     const denom = parseInt(mixedMatch[3], 10);
     const frac = denom > 0 ? parseInt(mixedMatch[2], 10) / denom : 0;
-    return { quantity: whole + frac, unit: mixedMatch[4].trim() };
+    return { quantity: whole + frac, unit: standardizeUnit(mixedMatch[4].trim()) };
   }
 
   // Try "1/2 cups" pattern
@@ -192,7 +193,7 @@ function parseMeasure(measure: string): { quantity: number; unit: string } {
     const denom = parseInt(fracMatch[2], 10);
     return {
       quantity: denom > 0 ? parseInt(fracMatch[1], 10) / denom : 0,
-      unit: fracMatch[3].trim(),
+      unit: standardizeUnit(fracMatch[3].trim()),
     };
   }
 
@@ -201,12 +202,12 @@ function parseMeasure(measure: string): { quantity: number; unit: string } {
   if (numMatch) {
     return {
       quantity: parseFloat(numMatch[1]),
-      unit: numMatch[2].trim(),
+      unit: standardizeUnit(numMatch[2].trim()),
     };
   }
 
   // Can't parse — treat as unit with quantity 1
-  return { quantity: 1, unit: measure };
+  return { quantity: 1, unit: standardizeUnit(measure) };
 }
 
 /**
@@ -255,20 +256,21 @@ export async function getMealDbRecipe(
     meal.strArea ? meal.strArea.toLowerCase() : null,
   ].filter(Boolean) as string[];
 
-  const recipe: CreateRecipeInput = {
+  // `complexity` is intentionally omitted so normalize()'s inference (which only
+  // fires when the field is absent) runs instead of defaulting to "standard".
+  const recipe = {
     name: meal.strMeal || "",
     description: `${meal.strCategory || ""} dish from ${meal.strArea || "unknown"} cuisine`,
-    ingredients,
-    steps: steps.length > 0 ? steps : ["See source for instructions"],
+    ingredientSections: [{ items: ingredients }],
+    stepSections: [{ steps: steps.length > 0 ? steps : ["See source for instructions"] }],
     cookTime: 0, // TheMealDB doesn't provide this
     prepTime: 0,
     servings: 4, // Not provided, default
     tags: [...new Set(tags)],
     categories: [meal.strCategory?.toLowerCase() || "dinner"],
-    complexity: "standard", // Will be inferred by normalize()
     sourceUrl: meal.strSource || undefined,
     imageUrl: meal.strMealThumb || undefined,
-  };
+  } as CreateRecipeInput;
 
   return {
     id: meal.idMeal,

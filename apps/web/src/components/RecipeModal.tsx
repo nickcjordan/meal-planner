@@ -8,9 +8,10 @@ import { IngredientActions } from "./IngredientActions";
 interface RecipeModalProps {
   recipeId: string;
   onClose: () => void;
+  plannedSides?: Array<{ sideName: string }>;
 }
 
-export function RecipeModal({ recipeId, onClose }: RecipeModalProps) {
+export function RecipeModal({ recipeId, onClose, plannedSides }: RecipeModalProps) {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -88,23 +89,46 @@ export function RecipeModal({ recipeId, onClose }: RecipeModalProps) {
             <div className="mt-8 grid gap-8 lg:grid-cols-2">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Ingredients</h3>
-                <IngredientActions ingredients={recipe.ingredients} />
+                <IngredientActions ingredientSections={recipe.ingredientSections} />
               </div>
 
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Steps</h3>
-                <ol className="mt-3 space-y-3">
-                  {recipe.steps.map((step, i) => (
-                    <li key={i} className="flex gap-2.5 text-sm">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-tag-bg text-xs font-semibold text-tag-text">
-                        {i + 1}
-                      </span>
-                      <span className="text-muted leading-relaxed">{step}</span>
-                    </li>
-                  ))}
-                </ol>
+                {(() => {
+                  let stepNum = 0;
+                  return recipe.stepSections.map((section, si) => (
+                    <div key={si}>
+                      {section.header && (
+                        <h4 className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted">
+                          {section.header}
+                        </h4>
+                      )}
+                      <ol className="mt-3 space-y-3">
+                        {section.steps.map((step) => {
+                          stepNum++;
+                          return (
+                            <li key={stepNum} className="flex gap-2.5 text-sm">
+                              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-tag-bg text-xs font-semibold text-tag-text">
+                                {stepNum}
+                              </span>
+                              <span className="text-muted leading-relaxed">{step}</span>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
+
+            {/* Planned sides footer */}
+            {plannedSides && plannedSides.length > 0 && (
+              <div className="mt-4 rounded-lg border border-card-border bg-tag-bg/50 px-4 py-2.5 text-sm text-muted">
+                <span className="font-medium text-foreground/70">Planned with:</span>{" "}
+                {plannedSides.map((s) => s.sideName).join(", ")}
+              </div>
+            )}
           </div>
         )}
       </div>

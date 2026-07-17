@@ -2,13 +2,16 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Send, Loader2, Play, RotateCcw, Info, ShoppingCart, ChefHat } from "lucide-react";
+import { Send, Loader2, Play, RotateCcw, Info, ShoppingCart, ChefHat, Check } from "lucide-react";
 import { ChatMessage } from "./ChatMessage";
 import { MealPlanPanel } from "./MealPlanPanel";
+import { IngredientReviewPanel } from "./IngredientReviewPanel";
 import { RecipeModal } from "./RecipeModal";
-import { getToolLabel } from "@/lib/chat";
-import type { Message } from "@/lib/chat";
-import type { MealProposal, ProposedStaple, ProposedSuggestion } from "@meal-planner/agent";
+import { useToast } from "./Toast";
+import { getToolLabel, isWriteTool } from "@/lib/chat";
+import { formatWeekOf } from "@/lib/week";
+import type { Message, ToolActivity } from "@/lib/chat";
+import type { MealProposal, ProposedSuggestion, MealAlternativesPayload, AlternativeMeal } from "@meal-planner/agent";
 
 interface SessionState {
   claudeSessionId: string | null;
@@ -57,11 +60,17 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  const [toolStatus, setToolStatus] = useState<string | null>(null);
+  const [toolActivities, setToolActivities] = useState<ToolActivity[]>([]);
+  const [heartbeatTick, setHeartbeatTick] = useState(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [claudeSessionId, setClaudeSessionId] = useState<string | null>(null);
   const [proposal, setProposal] = useState<MealProposal | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [modalRecipeId, setModalRecipeId] = useState<string | null>(null);
+  const [excludedIngredients, setExcludedIngredients] = useState<Set<string>>(new Set());
+  const [alternatives, setAlternatives] = useState<MealAlternativesPayload | null>(null);
+  const [respinLoading, setRespinLoading] = useState(false);
+  const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
   const persistRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -133,8 +142,6 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
     }
     setStreaming(true);
     setStreamingText("");
-    setToolStatus(null);
-
     try {
       const response = await fetch("/api/plan", {
         method: "POST",
@@ -178,26 +185,66 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
               case "text_delta":
                 accumulatedText += event.text;
                 setStreamingText(accumulatedText);
+                setStatusMessage(null);
                 break;
 
               case "tool_start":
-                setToolStatus(getToolLabel(event.toolName));
+                setStatusMessage(null);
+                setToolActivities(prev => [...prev, {
+                  toolName: event.toolName,
+                  toolUseId: event.toolUseId,
+                  label: getToolLabel(event.toolName),
+                  startedAt: Date.now(),
+                }]);
                 break;
 
               case "tool_progress":
-                setToolStatus(getToolLabel(event.toolName));
                 break;
 
-              case "tool_result":
-                setToolStatus(null);
+              case "tool_complete": {
+                const completedAt = Date.now();
+                setToolActivities(prev =>
+                  prev.map(a =>
+                    a.toolUseId === event.toolUseId && a.durationMs == null
+                      ? {
+                          ...a,
+                          durationMs: event.durationMs ?? completedAt - a.startedAt,
+                          isError: event.isError,
+                        }
+                      : a,
+                  ),
+                );
+                break;
+              }
+
+              case "tool_result": {
+                // Audit trail: toast for write tool completions
+                if (event.toolName && isWriteTool(event.toolName) && event.summary) {
+                  toast(event.summary, "info");
+                }
+                break;
+              }
+
+              case "heartbeat":
+                setHeartbeatTick(t => t + 1);
                 break;
 
               case "status":
-                setToolStatus(event.message);
+                setStatusMessage(event.message);
                 break;
 
               case "meal_proposal":
                 setProposal(event.proposal);
+                // A full plan re-present clears any lingering alternatives
+                setAlternatives(null);
+                setRespinLoading(false);
+                setToolActivities([]); // Stop spinner immediately
+                break;
+
+              case "meal_alternatives":
+                setAlternatives(event.alternatives);
+                setRespinLoading(false);
+                setToolActivities([]); // Stop spinner immediately
                 break;
 
               case "message_complete":
@@ -239,7 +286,9 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
       ]);
     } finally {
       setStreaming(false);
-      setToolStatus(null);
+      setToolActivities([]);
+      setHeartbeatTick(0);
+      setStatusMessage(null);
       setStreamingText("");
     }
   }
@@ -263,23 +312,12 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
     setProposal({ ...proposal, groceryStaples: updatedStaples });
   }
 
-  function handleAddStaple(staple: ProposedStaple) {
+  function handleConfirmCarryover(name: string, action: "confirmed" | "need" | undefined) {
     if (!proposal) return;
-    const existing = proposal.groceryStaples ?? [];
-    if (existing.some((s) => s.name === staple.name)) return;
-    setProposal({ ...proposal, groceryStaples: [...existing, staple] });
-  }
-
-  function handleConfirmCarryover(name: string, action: "confirmed" | "added-to-list") {
-    if (!proposal) return;
-    if (action === "added-to-list") {
-      // Remove from carryover — the agent should re-present without it
-      sendMessage(`I don't have the leftover ${name}. Please add it to the shopping list.`);
-    } else {
-      // Just update local state to show confirmed
-      const updated = (proposal.carryoverItems ?? []).filter((c) => c.name !== name);
-      setProposal({ ...proposal, carryoverItems: updated });
-    }
+    const updated = (proposal.carryoverItems ?? []).map((c) =>
+      c.name === name ? { ...c, status: action } : c,
+    );
+    setProposal({ ...proposal, carryoverItems: updated });
   }
 
   function handleAcceptSuggestion(suggestion: ProposedSuggestion) {
@@ -297,11 +335,16 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
     }
 
     if (suggestion.item) {
-      // Add the suggested item as a staple in the plan
-      handleAddStaple(suggestion.item);
-      // Remove from suggestions
+      // Add the suggested item as a staple and remove from suggestions in one update
+      // (two separate setProposal calls would race — the second overwrites the first)
+      const existing = proposal.groceryStaples ?? [];
+      const alreadyExists = existing.some((s) => s.name === suggestion.item!.name);
       const updatedSuggestions = (proposal.suggestions ?? []).filter((s) => s.id !== suggestion.id);
-      setProposal({ ...proposal, suggestions: updatedSuggestions });
+      setProposal({
+        ...proposal,
+        groceryStaples: alreadyExists ? existing : [...existing, suggestion.item],
+        suggestions: updatedSuggestions,
+      });
 
       // If it's a smart-promotion, also add it as a permanent staple via chat
       if (suggestion.type === "smart-promotion") {
@@ -316,6 +359,64 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
     }
   }
 
+  function handleDismissSuggestion(suggestionId: string) {
+    if (!proposal) return;
+    const updatedSuggestions = (proposal.suggestions ?? []).filter((s) => s.id !== suggestionId);
+    setProposal({ ...proposal, suggestions: updatedSuggestions });
+  }
+
+  function handleRequestRespin(selectedSlots: Array<{ day: string; mealType: string }>) {
+    setRespinLoading(true);
+    setAlternatives(null);
+    const slotDescriptions = selectedSlots
+      .map((s) => `${s.day.charAt(0).toUpperCase() + s.day.slice(1)}'s ${s.mealType}`)
+      .join(", ");
+    sendMessage(
+      `I'd like to re-spin these meals — please suggest 3 alternatives for each: ${slotDescriptions}`,
+    );
+  }
+
+  function handleConfirmRespinPicks(picks: Array<{ day: string; mealType: string; picked: AlternativeMeal }>) {
+    // Apply all picks to the proposal at once
+    if (proposal) {
+      const pickMap = new Map(picks.map((p) => [`${p.day}-${p.mealType}`, p.picked]));
+      const updatedMeals = proposal.meals.map((m) => {
+        const pick = pickMap.get(`${m.day}-${m.mealType}`);
+        return pick
+          ? { ...m, recipeId: pick.recipeId, recipeName: pick.recipeName, complexity: pick.complexity, reasoning: pick.reasoning, adaptations: pick.adaptations }
+          : m;
+      });
+      setProposal({ ...proposal, meals: updatedMeals });
+    }
+
+    // Close modal and ask AI to re-present the full updated plan
+    setAlternatives(null);
+    const pickDescriptions = picks
+      .map((p) => `${p.day.charAt(0).toUpperCase() + p.day.slice(1)}: ${p.picked.recipeName}`)
+      .join(", ");
+    sendMessage(
+      `I've picked replacements for the re-spun meals: ${pickDescriptions}. Please present the updated full plan.`,
+      false,
+    );
+  }
+
+  function handleCancelRespin() {
+    setAlternatives(null);
+    setRespinLoading(false);
+  }
+
+  function handleToggleIngredient(key: string) {
+    setExcludedIngredients((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
   function handleSaved() {
     setConfirmed(true);
     clearSession();
@@ -327,10 +428,11 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
     setClaudeSessionId(null);
     setProposal(null);
     setConfirmed(false);
+    setExcludedIngredients(new Set());
     setInput("");
   }
 
-  const weekLabel = new Date(weekOf).toLocaleDateString("en-US", {
+  const weekLabel = formatWeekOf(weekOf, {
     month: "long",
     day: "numeric",
     year: "numeric",
@@ -391,12 +493,40 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
 
             {streamingText && <ChatMessage role="assistant" content={streamingText} />}
 
-            {streaming && (streamingText === "" || toolStatus) && (
+            {streaming && (streamingText === "" || toolActivities.some(a => a.durationMs == null)) && (
               <div className={`flex flex-col items-center justify-center gap-3 ${messages.length === 0 && !streamingText ? "h-full" : "py-8"}`}>
-                <Loader2 className="h-6 w-6 animate-spin text-accent" />
-                <span className="text-sm text-muted">
-                  {toolStatus ?? "Thinking..."}
-                </span>
+                {toolActivities.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    {toolActivities.map((activity, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-muted">
+                        {activity.durationMs != null ? (
+                          <Check className="h-3.5 w-3.5 text-green-500/70" />
+                        ) : (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                        )}
+                        <span>{activity.label}</span>
+                        {activity.durationMs != null && (
+                          <span className="opacity-50">{(activity.durationMs / 1000).toFixed(1)}s</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!toolActivities.some(a => a.durationMs == null) && (
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-5 w-5 items-center justify-center">
+                      {heartbeatTick > 0 && (
+                        <span
+                          key={heartbeatTick}
+                          className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                          style={{ animation: "ping 1s cubic-bezier(0, 0, 0.2, 1) 1 forwards" }}
+                        />
+                      )}
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500/50" />
+                    </span>
+                    <span className="text-sm text-muted">{statusMessage ?? "Thinking..."}</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -447,10 +577,40 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
 
             {streamingText && <ChatMessage role="assistant" content={streamingText} />}
 
-            {streaming && (streamingText === "" || toolStatus) && (
-              <div className="flex items-center gap-2 py-3 text-xs text-muted justify-center">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
-                <span>{toolStatus ?? "Thinking..."}</span>
+            {streaming && (streamingText === "" || toolActivities.some(a => a.durationMs == null)) && (
+              <div className="flex flex-col items-center gap-1.5 py-3">
+                {toolActivities.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    {toolActivities.map((activity, i) => (
+                      <div key={i} className="flex items-center gap-1.5 text-xs text-muted">
+                        {activity.durationMs != null ? (
+                          <Check className="h-3 w-3 text-green-500/70" />
+                        ) : (
+                          <Loader2 className="h-3 w-3 animate-spin text-accent" />
+                        )}
+                        <span>{activity.label}</span>
+                        {activity.durationMs != null && (
+                          <span className="opacity-50">{(activity.durationMs / 1000).toFixed(1)}s</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!toolActivities.some(a => a.durationMs == null) && (
+                  <div className="flex items-center gap-2 text-xs text-muted">
+                    <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+                      {heartbeatTick > 0 && (
+                        <span
+                          key={heartbeatTick}
+                          className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                          style={{ animation: "ping 1s cubic-bezier(0, 0, 0.2, 1) 1 forwards" }}
+                        />
+                      )}
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500/50" />
+                    </span>
+                    <span>{statusMessage ?? "Thinking..."}</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -514,14 +674,40 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
           <MealPlanPanel
             proposal={proposal}
             weekOf={weekOf}
+            excludedIngredients={excludedIngredients}
+            alternatives={alternatives}
+            respinLoading={respinLoading}
+            streaming={streaming}
+            onRequestRespin={handleRequestRespin}
+            onConfirmRespinPicks={handleConfirmRespinPicks}
+            onCancelRespin={handleCancelRespin}
             onRequestSwap={handleRequestSwap}
             onRemoveExtra={(name) => sendMessage(`Remove the "${name}" extra from the plan.`)}
             onRemoveStaple={handleRemoveStaple}
             onConfirmCarryover={handleConfirmCarryover}
             onAcceptSuggestion={handleAcceptSuggestion}
+            onDismissSuggestion={handleDismissSuggestion}
+            onToggleAdaptation={(day, _mealType, adaptationName, currentlyApplied) => {
+              const dayLabel = day.charAt(0).toUpperCase() + day.slice(1);
+              if (currentlyApplied) {
+                sendMessage(`Skip the ${adaptationName} adaptation for ${dayLabel}'s meal — go with the original ingredients.`);
+              } else {
+                sendMessage(`Apply the ${adaptationName} adaptation to ${dayLabel}'s meal — use the substituted ingredients.`);
+              }
+            }}
             onRecipeClick={(id) => setModalRecipeId(id)}
             onSaved={handleSaved}
             onDiscard={handleStartNew}
+          />
+        </div>
+
+        {/* Ingredient review panel */}
+        <div className="w-72 shrink-0 rounded-xl border border-card-border bg-card shadow-sm">
+          <IngredientReviewPanel
+            proposal={proposal}
+            excludedIngredients={excludedIngredients}
+            onToggleIngredient={handleToggleIngredient}
+            disabled={confirmed}
           />
         </div>
       </div>

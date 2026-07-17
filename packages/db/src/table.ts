@@ -5,7 +5,7 @@ import {
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { GSI1_NAME } from "./client.js";
+import { GSI1_NAME, GSI2_NAME } from "./client.js";
 
 export interface CreateTableOptions {
   tableName: string;
@@ -37,6 +37,7 @@ export async function createTableIfNotExists(options: CreateTableOptions): Promi
         { AttributeName: "SK", AttributeType: "S" },
         { AttributeName: "GSI1PK", AttributeType: "S" },
         { AttributeName: "GSI1SK", AttributeType: "S" },
+        { AttributeName: "GSI2PK", AttributeType: "S" },
       ],
       GlobalSecondaryIndexes: [
         {
@@ -44,6 +45,14 @@ export async function createTableIfNotExists(options: CreateTableOptions): Promi
           KeySchema: [
             { AttributeName: "GSI1PK", KeyType: "HASH" },
             { AttributeName: "GSI1SK", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+        {
+          IndexName: GSI2_NAME,
+          KeySchema: [
+            { AttributeName: "GSI2PK", KeyType: "HASH" },
+            { AttributeName: "PK", KeyType: "RANGE" },
           ],
           Projection: { ProjectionType: "ALL" },
         },

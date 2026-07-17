@@ -3,12 +3,35 @@
 import { useState, useEffect, useMemo } from "react";
 import { Loader2, RefreshCw, Store, Wifi, WifiOff, Newspaper, Search } from "lucide-react";
 import type { HebStoreConfig, WeeklyAdData } from "@meal-planner/types";
+import { CardSkeleton } from "@/components/Skeleton";
 
 interface HebStatus {
   connected: boolean;
   store?: HebStoreConfig;
+  /** True when a real store has been chosen (vs the hardcoded default). */
+  storeConfigured?: boolean;
   cookieAge?: number;
   cookieFresh?: boolean;
+}
+
+/**
+ * Parse a deal price for *sorting*. Only plainly-numeric strings (optionally
+ * `$`-prefixed) yield a number; promo strings like "2/$5" return null so they
+ * sort to the bottom instead of misparsing.
+ */
+function parseDealPrice(price: string | undefined): number | null {
+  if (!price) return null;
+  const cleaned = price.replace(/^\$/, "").trim();
+  return /^\d+(\.\d+)?$/.test(cleaned) ? parseFloat(cleaned) : null;
+}
+
+/**
+ * Render a deal price. Plain numbers get a `$` prefix; anything already
+ * containing a `$` or non-numeric (e.g. "2/$5", "BOGO") renders verbatim so we
+ * never produce a double "$".
+ */
+function formatDealPrice(price: string): string {
+  return /^\d+(\.\d+)?$/.test(price.trim()) ? `$${price}` : price;
 }
 
 export default function HebSettingsPage() {
@@ -123,10 +146,13 @@ export default function HebSettingsPage() {
         if (a.discount && b.discount) return b.discount - a.discount;
         if (a.discount) return -1;
         if (b.discount) return 1;
-        // Then items with prices (lowest first)
-        if (a.price && b.price) return parseFloat(a.price) - parseFloat(b.price);
-        if (a.price) return -1;
-        if (b.price) return 1;
+        // Then items with a parseable price (lowest first); unparsable/missing
+        // prices sink to the bottom.
+        const pa = parseDealPrice(a.price);
+        const pb = parseDealPrice(b.price);
+        if (pa !== null && pb !== null) return pa - pb;
+        if (pa !== null) return -1;
+        if (pb !== null) return 1;
         return 0;
       });
     }
@@ -136,8 +162,9 @@ export default function HebSettingsPage() {
 
   if (loading) {
     return (
-      <div className="py-16 text-center text-muted">
-        Loading HEB settings...
+      <div className="mx-auto max-w-3xl space-y-6">
+        <CardSkeleton />
+        <CardSkeleton />
       </div>
     );
   }
@@ -158,7 +185,7 @@ export default function HebSettingsPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {status?.cookieFresh ? (
-              <Wifi className="h-5 w-5 text-green-500" />
+              <Wifi className="h-5 w-5 text-success" />
             ) : (
               <WifiOff className="h-5 w-5 text-muted" />
             )}
@@ -211,6 +238,11 @@ export default function HebSettingsPage() {
                 <p className="text-xs text-muted">{status.store.address}</p>
               ) : (
                 <p className="text-xs text-muted">Store #{storeId}</p>
+              )}
+              {status && !status.storeConfigured && (
+                <p className="mt-0.5 text-xs text-warning">
+                  Using default store — choose yours for accurate prices and deals
+                </p>
               )}
             </div>
           </div>
@@ -272,7 +304,7 @@ export default function HebSettingsPage() {
       <div className="mt-6 rounded-xl border border-card-border bg-card p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Newspaper className="h-5 w-5 text-orange-500" />
+            <Newspaper className="h-5 w-5 text-warning" />
             <div>
               <p className="font-medium">
                 {weeklyAd?.flyerName ?? "This Week\u2019s Deals"}
@@ -333,7 +365,7 @@ export default function HebSettingsPage() {
                   className="relative flex gap-4 rounded-lg border border-card-border bg-background p-4"
                 >
                   {item.discount && (
-                    <span className="absolute right-3 top-3 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                    <span className="absolute right-3 top-3 rounded-full bg-danger px-2 py-0.5 text-[10px] font-bold text-white">
                       {item.discount}% off
                     </span>
                   )}
@@ -356,12 +388,12 @@ export default function HebSettingsPage() {
                     )}
                     <div className="mt-2">
                       {item.price && (
-                        <p className="text-lg font-bold text-green-600">
-                          ${item.price}
+                        <p className="text-lg font-bold text-success">
+                          {formatDealPrice(item.price)}
                         </p>
                       )}
                       {!item.price && item.discount && (
-                        <p className="text-sm font-semibold text-red-500">
+                        <p className="text-sm font-semibold text-danger">
                           {item.discount}% off
                         </p>
                       )}

@@ -3,11 +3,11 @@ import {
   GetCommand,
   DeleteCommand,
   QueryCommand,
-  ScanCommand,
   BatchGetCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { Recipe, CreateRecipeInput, UpdateRecipeInput, DynamoDBRecord } from "@meal-planner/types";
-import { getDocClient, TABLE_NAME, GSI1_NAME } from "./client.js";
+import { getDocClient, TABLE_NAME, GSI1_NAME, GSI2_NAME, scanAll, queryAll, stripUndefined } from "./client.js";
 import { randomUUID } from "crypto";
 
 type RecipeRecord = DynamoDBRecord & Recipe;
@@ -16,14 +16,39 @@ function toRecord(recipe: Recipe): RecipeRecord {
   return {
     PK: `RECIPE#${recipe.id}`,
     SK: `RECIPE#${recipe.id}`,
+    GSI2PK: "RECIPES",
     entityType: "RECIPE",
     ...recipe,
   };
 }
 
 function fromRecord(record: RecipeRecord): Recipe {
-  const { PK: _, SK: __, GSI1PK: ___, GSI1SK: ____, entityType: _____, ...recipe } = record;
+  const { PK: _, SK: __, GSI1PK: ___, GSI1SK: ____, GSI2PK: ______, entityType: _______, ...recipe } = record;
+
+  // Backwards compat: wrap legacy flat arrays into single headerless sections
+  const raw = recipe as Record<string, unknown>;
+  if ("ingredients" in raw && !("ingredientSections" in raw)) {
+    raw.ingredientSections = [{ items: raw.ingredients }];
+  }
+  if ("steps" in raw && !("stepSections" in raw)) {
+    raw.stepSections = [{ steps: raw.steps }];
+  }
+  delete raw.ingredients;
+  delete raw.steps;
+
+  // Coerce notes/equipment to arrays if stored incorrectly (e.g. plain string)
+  if (raw.notes !== undefined && !Array.isArray(raw.notes)) {
+    raw.notes = typeof raw.notes === "string" && raw.notes ? [raw.notes] : [];
+  }
+  if (raw.equipment !== undefined && !Array.isArray(raw.equipment)) {
+    raw.equipment = typeof raw.equipment === "string" && raw.equipment ? [raw.equipment] : [];
+  }
+
   return recipe;
+}
+
+function deriveIngredientNames(sections: Recipe["ingredientSections"]): string[] {
+  return sections.flatMap((s) => s.items.map((i) => i.name));
 }
 
 export async function createRecipe(input: CreateRecipeInput): Promise<Recipe> {
@@ -31,6 +56,7 @@ export async function createRecipe(input: CreateRecipeInput): Promise<Recipe> {
   const recipe: Recipe = {
     id: randomUUID(),
     ...input,
+    ingredientNames: deriveIngredientNames(input.ingredientSections),
     createdAt: now,
     updatedAt: now,
   };
@@ -76,17 +102,39 @@ export async function getRecipe(id: string): Promise<Recipe | null> {
   return fromRecord(result.Item as RecipeRecord);
 }
 
+/**
+ * Update a recipe. Undefined fields in `input` are stripped so they never erase
+ * stored values. `enrichedStepSections` honors an explicit `null` sentinel: on
+ * `null` the key is deleted from the merged item before the Put, so a DynamoDB
+ * NULL is never written (see UpdateRecipeInput). Omitting it leaves it unchanged.
+ */
 export async function updateRecipe(id: string, input: UpdateRecipeInput): Promise<Recipe | null> {
   const existing = await getRecipe(id);
   if (!existing) return null;
 
+  // Pull enrichedStepSections out so the `null` sentinel never spreads into a
+  // Recipe (whose field is `EnrichedStepSection[] | undefined`).
+  const { enrichedStepSections: enrichedInput, ...restInput } = input;
+  const defined = stripUndefined(restInput);
+
   const updated: Recipe = {
     ...existing,
-    ...input,
+    ...defined,
     id,
+    // Re-derive ingredientNames if ingredients changed
+    ingredientNames: input.ingredientSections
+      ? deriveIngredientNames(input.ingredientSections)
+      : existing.ingredientNames ?? deriveIngredientNames(existing.ingredientSections),
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   };
+
+  if (enrichedInput === null) {
+    // Explicit clear — remove the key so no NULL is stored.
+    delete updated.enrichedStepSections;
+  } else if (enrichedInput !== undefined) {
+    updated.enrichedStepSections = enrichedInput;
+  }
 
   const record = toRecord(updated);
   await getDocClient().send(
@@ -158,30 +206,24 @@ export async function deleteRecipe(id: string): Promise<boolean> {
 }
 
 export async function listRecipes(): Promise<Recipe[]> {
-  const result = await getDocClient().send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: "entityType = :type",
-      ExpressionAttributeValues: { ":type": "RECIPE" },
-    }),
-  );
+  const items = await scanAll({
+    TableName: TABLE_NAME,
+    FilterExpression: "entityType = :type",
+    ExpressionAttributeValues: { ":type": "RECIPE" },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as RecipeRecord));
+  return items.map((item) => fromRecord(item as RecipeRecord));
 }
 
 export async function getRecipesByTag(tag: string): Promise<Recipe[]> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      IndexName: GSI1_NAME,
-      KeyConditionExpression: "GSI1PK = :pk",
-      ExpressionAttributeValues: { ":pk": `TAG#${tag}` },
-    }),
-  );
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    IndexName: GSI1_NAME,
+    KeyConditionExpression: "GSI1PK = :pk",
+    ExpressionAttributeValues: { ":pk": `TAG#${tag}` },
+  });
 
-  const recipeIds = (result.Items ?? []).map(
-    (item) => (item as { recipeId: string }).recipeId,
-  );
+  const recipeIds = items.map((item) => (item as { recipeId: string }).recipeId);
 
   const recipes: Recipe[] = [];
   for (const recipeId of recipeIds) {
@@ -193,17 +235,15 @@ export async function getRecipesByTag(tag: string): Promise<Recipe[]> {
 }
 
 export async function listTags(): Promise<string[]> {
-  const result = await getDocClient().send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: "entityType = :type",
-      ExpressionAttributeValues: { ":type": "TAG" },
-      ProjectionExpression: "PK",
-    }),
-  );
+  const items = await scanAll({
+    TableName: TABLE_NAME,
+    FilterExpression: "entityType = :type",
+    ExpressionAttributeValues: { ":type": "TAG" },
+    ProjectionExpression: "PK",
+  });
 
   const tags = new Set<string>();
-  for (const item of result.Items ?? []) {
+  for (const item of items) {
     const pk = item.PK as string;
     tags.add(pk.replace("TAG#", ""));
   }
@@ -211,18 +251,109 @@ export async function listTags(): Promise<string[]> {
 }
 
 export async function findRecipeBySourceUrl(url: string): Promise<Recipe | null> {
-  const result = await getDocClient().send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: "entityType = :type AND sourceUrl = :url",
-      ExpressionAttributeValues: { ":type": "RECIPE", ":url": url },
-      Limit: 1,
-    }),
-  );
+  // Paginated filtered scan: DynamoDB applies Limit before the filter, so a
+  // single-shot `Limit: 1` scan would almost always miss the match. Follow every
+  // page and return the first item that passes the FilterExpression.
+  const items = await scanAll({
+    TableName: TABLE_NAME,
+    FilterExpression: "entityType = :type AND sourceUrl = :url",
+    ExpressionAttributeValues: { ":type": "RECIPE", ":url": url },
+  });
 
-  const items = result.Items ?? [];
   if (items.length === 0) return null;
   return fromRecord(items[0] as RecipeRecord);
+}
+
+/** Summary type returned by GSI2 query — recipe data without steps/notes/equipment */
+export interface RecipeSummary {
+  id: string;
+  name: string;
+  description: string;
+  complexity: Recipe["complexity"];
+  tags: string[];
+  categories: string[];
+  primaryProtein?: string;
+  cuisineType?: string;
+  ingredientNames?: string[];
+  prepTime: number;
+  cookTime: number;
+  servings: number;
+  avgRating?: number | null;
+  lastCookedAt?: string | null;
+}
+
+/** Query all recipe summaries via GSI2. Returns compact records for planning. */
+export async function listRecipeSummaries(): Promise<RecipeSummary[]> {
+  const summaries: RecipeSummary[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+
+  do {
+    const result = await getDocClient().send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        IndexName: GSI2_NAME,
+        KeyConditionExpression: "GSI2PK = :pk",
+        ExpressionAttributeValues: { ":pk": "RECIPES" },
+        ...(lastKey ? { ExclusiveStartKey: lastKey } : {}),
+      }),
+    );
+
+    for (const item of result.Items ?? []) {
+      summaries.push({
+        id: (item as Recipe).id,
+        name: (item as Recipe).name,
+        description: (item as Recipe).description,
+        complexity: (item as Recipe).complexity,
+        tags: (item as Recipe).tags,
+        categories: (item as Recipe).categories,
+        primaryProtein: (item as Recipe).primaryProtein,
+        cuisineType: (item as Recipe).cuisineType,
+        ingredientNames: (item as Recipe).ingredientNames,
+        prepTime: (item as Recipe).prepTime,
+        cookTime: (item as Recipe).cookTime,
+        servings: (item as Recipe).servings,
+        avgRating: (item as Recipe).avgRating,
+        lastCookedAt: (item as Recipe).lastCookedAt,
+      });
+    }
+
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+
+  return summaries;
+}
+
+/** Update only the planning-derived fields on a recipe item (avgRating, lastCookedAt). */
+export async function updateRecipePlanningFields(
+  recipeId: string,
+  fields: { avgRating?: number | null; lastCookedAt?: string | null },
+): Promise<void> {
+  const expParts: string[] = [];
+  const expNames: Record<string, string> = {};
+  const expValues: Record<string, unknown> = {};
+
+  if (fields.avgRating !== undefined) {
+    expParts.push("#ar = :ar");
+    expNames["#ar"] = "avgRating";
+    expValues[":ar"] = fields.avgRating;
+  }
+  if (fields.lastCookedAt !== undefined) {
+    expParts.push("#lc = :lc");
+    expNames["#lc"] = "lastCookedAt";
+    expValues[":lc"] = fields.lastCookedAt;
+  }
+
+  if (expParts.length === 0) return;
+
+  await getDocClient().send(
+    new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: { PK: `RECIPE#${recipeId}`, SK: `RECIPE#${recipeId}` },
+      UpdateExpression: `SET ${expParts.join(", ")}`,
+      ExpressionAttributeNames: expNames,
+      ExpressionAttributeValues: expValues,
+    }),
+  );
 }
 
 export async function getRecipesBatch(ids: string[]): Promise<Map<string, Recipe>> {

@@ -1,6 +1,6 @@
-import { PutCommand, DeleteCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, DeleteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import type { FamilyMember, CreateFamilyMemberInput, DynamoDBRecord } from "@meal-planner/types";
-import { getDocClient, TABLE_NAME } from "./client.js";
+import { getDocClient, TABLE_NAME, queryAll, stripUndefined } from "./client.js";
 import { randomUUID } from "crypto";
 
 type MemberRecord = DynamoDBRecord & FamilyMember;
@@ -44,7 +44,7 @@ export async function updateFamilyMember(
 
   const updated: FamilyMember = {
     ...existing,
-    ...updates,
+    ...stripUndefined(updates),
     id,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
@@ -88,13 +88,11 @@ export async function removeFamilyMember(id: string): Promise<boolean> {
 }
 
 export async function listFamilyMembers(): Promise<FamilyMember[]> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: "PK = :pk",
-      ExpressionAttributeValues: { ":pk": "MEMBERS#default" },
-    }),
-  );
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "PK = :pk",
+    ExpressionAttributeValues: { ":pk": "MEMBERS#default" },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as MemberRecord));
+  return items.map((item) => fromRecord(item as MemberRecord));
 }

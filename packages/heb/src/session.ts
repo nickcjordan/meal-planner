@@ -33,11 +33,15 @@ function findChrome(): string {
 const COOKIE_MAX_AGE_MS = 10 * 60 * 1000;
 
 /**
- * Check if stored cookies are still fresh.
+ * Check if stored cookies are still fresh for the requested store. Cookies
+ * captured against a different store are treated as not fresh, so switching
+ * stores forces a session refresh (aligning with `getFreshCookies`, which
+ * also re-establishes the session on a store mismatch).
  */
-export async function hasFreshCookies(): Promise<boolean> {
+export async function hasFreshCookies(storeId: string): Promise<boolean> {
   const record = await getHebCookies();
   if (!record) return false;
+  if (record.storeId !== storeId) return false;
 
   const age = Date.now() - new Date(record.capturedAt).getTime();
   return age < COOKIE_MAX_AGE_MS;

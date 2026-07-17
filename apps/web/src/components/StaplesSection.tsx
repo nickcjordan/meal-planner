@@ -115,41 +115,35 @@ export function StaplesSection() {
     setSaving(true);
 
     try {
-      if (editingId) {
-        await fetch(`/api/staples/${encodeURIComponent(editingId)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: form.name.trim(),
-            style: form.style,
-            category: form.category,
-            defaultQuantity: form.defaultQuantity ? parseFloat(form.defaultQuantity) : undefined,
-            defaultUnit: form.defaultUnit || undefined,
-            description: form.description || undefined,
-            frequency: form.frequency,
-            notes: form.notes || undefined,
-          }),
-        });
-      } else {
-        await fetch("/api/staples", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: form.name.trim(),
-            style: form.style,
-            category: form.category,
-            defaultQuantity: form.defaultQuantity ? parseFloat(form.defaultQuantity) : undefined,
-            defaultUnit: form.defaultUnit || undefined,
-            description: form.description || undefined,
-            frequency: form.frequency,
-            notes: form.notes || undefined,
-          }),
-        });
+      const payload = {
+        name: form.name.trim(),
+        style: form.style,
+        category: form.category,
+        defaultQuantity: form.defaultQuantity ? parseFloat(form.defaultQuantity) : undefined,
+        defaultUnit: form.defaultUnit || undefined,
+        description: form.description || undefined,
+        frequency: form.frequency,
+        notes: form.notes || undefined,
+      };
+      const res = editingId
+        ? await fetch(`/api/staples/${encodeURIComponent(editingId)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/staples", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+      if (!res.ok) {
+        toast("Failed to save — please try again");
+        return;
       }
       setShowForm(false);
       setEditingId(null);
       await fetchStaples();
-      toast(editingId ? "Staple updated" : "Staple added");
+      toast(editingId ? "Item updated" : "Item added");
     } finally {
       setSaving(false);
     }
@@ -159,7 +153,7 @@ export function StaplesSection() {
     await fetch(`/api/staples/${encodeURIComponent(id)}`, { method: "DELETE" });
     await fetchStaples();
     setDeleteTarget(null);
-    toast("Staple removed");
+    toast("Item removed");
   }
 
   async function handleToggleActive(staple: GroceryStaple) {
@@ -169,7 +163,7 @@ export function StaplesSection() {
       body: JSON.stringify({ isActive: !staple.isActive }),
     });
     await fetchStaples();
-    toast(staple.isActive ? "Staple deactivated" : "Staple reactivated");
+    toast(staple.isActive ? "Item deactivated" : "Item reactivated");
   }
 
   if (loading) {
@@ -182,16 +176,12 @@ export function StaplesSection() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted">
-          Items your family buys regularly. These are automatically included on
-          your weekly shopping list based on their frequency.
-        </p>
+      <div className="flex items-center justify-end">
         <button
           onClick={openAddForm}
           className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
         >
-          <Plus className="h-4 w-4" /> Add Staple
+          <Plus className="h-4 w-4" /> Add recurring item
         </button>
       </div>
 
@@ -202,7 +192,7 @@ export function StaplesSection() {
           className="mt-4 rounded-xl border border-accent/30 bg-card p-6"
         >
           <h3 className="text-sm font-semibold text-foreground mb-4">
-            {editingId ? `Edit "${form.name}"` : "Add New Staple"}
+            {editingId ? `Edit "${form.name}"` : "Add new recurring item"}
           </h3>
 
           <div className="grid grid-cols-2 gap-4">
@@ -352,9 +342,9 @@ export function StaplesSection() {
         {activeStaples.length === 0 && (
           <div className="rounded-xl border border-dashed border-card-border py-12 text-center">
             <ShoppingBasket className="mx-auto h-10 w-10 text-muted/30" />
-            <p className="mt-3 text-sm text-muted">No staples configured yet.</p>
+            <p className="mt-3 text-sm text-muted">No recurring items configured yet.</p>
             <p className="text-xs text-muted mt-1">
-              Add items your family buys every week — milk, bananas, etc.
+              Add items your family buys regularly — milk, bananas, etc.
             </p>
           </div>
         )}
@@ -454,8 +444,8 @@ export function StaplesSection() {
       )}
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Delete staple"
-        message={`Remove "${deleteTarget?.name}" from your auto-buy list?`}
+        title="Delete recurring item"
+        message={`Remove "${deleteTarget?.name}" from your recurring items?`}
         onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
         onCancel={() => setDeleteTarget(null)}
       />

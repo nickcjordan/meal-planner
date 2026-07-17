@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
-import { saveHebStore, getHebStore } from "@meal-planner/heb";
+import {
+  saveHebStore,
+  getHebStore,
+  getHebStoreIfConfigured,
+} from "@meal-planner/heb";
 
 export async function GET() {
   try {
-    const store = await getHebStore();
-    if (!store) {
-      return NextResponse.json({ error: "No store configured" }, { status: 404 });
-    }
-    return NextResponse.json(store);
+    // `getHebStore` always returns *a* store (falling back to the hardcoded
+    // default); `storeConfigured` tells the client whether it is a real
+    // user-chosen store or that default.
+    const configured = await getHebStoreIfConfigured();
+    const store = configured ?? (await getHebStore());
+    return NextResponse.json({ ...store, storeConfigured: configured !== null });
   } catch (err) {
     console.error("GET /api/heb/store failed:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -16,7 +21,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { storeId, storeName, address } = await request.json();
+    const { storeId, storeName, address, postalCode } = await request.json();
 
     if (!storeId || !storeName) {
       return NextResponse.json(
@@ -25,7 +30,12 @@ export async function POST(request: Request) {
       );
     }
 
-    await saveHebStore({ storeId, storeName, address: address ?? "" });
+    await saveHebStore({
+      storeId,
+      storeName,
+      address: address ?? "",
+      ...(postalCode ? { postalCode } : {}),
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("POST /api/heb/store failed:", err);

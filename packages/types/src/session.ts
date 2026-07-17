@@ -9,10 +9,23 @@ export type DayOfWeek =
   | "saturday"
   | "sunday";
 
+export type PlannedSide =
+  | { kind: "ref"; sideId: string }
+  | {
+      kind: "inline";
+      name: string;
+      ingredients: import("./side.js").SideIngredient[];
+      complexity: import("./side.js").SideComplexity;
+      baseIngredient?: string;
+      sideCategory?: import("./side.js").SideCategory;
+    };
+
 export interface PlannedMeal {
   day: DayOfWeek;
   mealType: MealType;
   recipeId: string;
+  sides?: PlannedSide[];
+  cookedAt?: string;
 }
 
 export interface PlanExtra {

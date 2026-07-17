@@ -1,11 +1,11 @@
-import { PutCommand, DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import type {
   PantryItem,
   CreatePantryItemInput,
   UpdatePantryItemInput,
   DynamoDBRecord,
 } from "@meal-planner/types";
-import { getDocClient, TABLE_NAME } from "./client.js";
+import { getDocClient, TABLE_NAME, queryAll, stripUndefined } from "./client.js";
 import { randomUUID } from "crypto";
 
 type PantryRecord = DynamoDBRecord & PantryItem;
@@ -60,7 +60,7 @@ export async function updatePantryItem(
 
   const updated: PantryItem = {
     ...existing,
-    ...updates,
+    ...stripUndefined(updates),
     id: existing.id,
     normalizedName: updates.name
       ? updates.name.toLowerCase().trim()
@@ -108,13 +108,11 @@ export async function removePantryItem(id: string): Promise<boolean> {
 }
 
 export async function listPantryItems(): Promise<PantryItem[]> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: "PK = :pk",
-      ExpressionAttributeValues: { ":pk": "PANTRY#default" },
-    }),
-  );
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "PK = :pk",
+    ExpressionAttributeValues: { ":pk": "PANTRY#default" },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as PantryRecord));
+  return items.map((item) => fromRecord(item as PantryRecord));
 }

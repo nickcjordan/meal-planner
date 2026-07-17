@@ -1,4 +1,12 @@
-export { getDocClient, TABLE_NAME, GSI1_NAME } from "./client.js";
+export {
+  getDocClient,
+  TABLE_NAME,
+  GSI1_NAME,
+  GSI2_NAME,
+  scanAll,
+  queryAll,
+  stripUndefined,
+} from "./client.js";
 export { createTableIfNotExists } from "./table.js";
 
 export {
@@ -11,7 +19,10 @@ export {
   getRecipesByTag,
   listTags,
   findRecipeBySourceUrl,
+  listRecipeSummaries,
+  updateRecipePlanningFields,
 } from "./recipes.js";
+export type { RecipeSummary } from "./recipes.js";
 
 export {
   createSession,
@@ -45,6 +56,9 @@ export {
 
 export { getPurchasePatterns, getSmartPromotionCandidates } from "./purchases.js";
 
+export { recordPurchases } from "./purchase-log.js";
+export type { PurchaseLogItem } from "./purchase-log.js";
+
 export { getActiveGroceryList, saveGroceryList, ensureGroceryList } from "./grocery-list.js";
 
 export {
@@ -77,3 +91,34 @@ export {
   listDietaryAdaptations,
   listAdaptationsForMember,
 } from "./adaptations.js";
+
+export {
+  addIngredientSwap,
+  updateIngredientSwap,
+  getIngredientSwap,
+  removeIngredientSwap,
+  listIngredientSwaps,
+  listActiveIngredientSwaps,
+} from "./swaps.js";
+
+export { getPlanningCandidates } from "./planning.js";
+export type {
+  PlanningCandidate,
+  PlanningContext,
+  PlanningCandidatesResult,
+} from "./planning.js";
+
+export {
+  createSide,
+  getSide,
+  updateSide,
+  deleteSide,
+  listSides,
+  getSidesByBase,
+  getSidesByTag,
+  getSidesBatch,
+  searchSides,
+  getSidePairingStats,
+  getInlineSideFrequencies,
+} from "./sides.js";
+export type { SidePairingStat, InlineSideFrequency } from "./sides.js";

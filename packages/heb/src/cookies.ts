@@ -76,7 +76,13 @@ const DEFAULT_STORE: HebStoreConfig = {
   address: "",
 };
 
-export async function getHebStore(): Promise<HebStoreConfig> {
+/**
+ * Read the stored store record, or `null` when the user has never chosen a
+ * store. Callers that need to distinguish a real selection from the hardcoded
+ * default (e.g. the `storeConfigured` status flag) use this; callers that just
+ * need *a* store use `getHebStore`.
+ */
+export async function getHebStoreIfConfigured(): Promise<HebStoreConfig | null> {
   const result = await getDocClient().send(
     new GetCommand({
       TableName: TABLE_NAME,
@@ -84,10 +90,15 @@ export async function getHebStore(): Promise<HebStoreConfig> {
     }),
   );
 
-  if (!result.Item) return DEFAULT_STORE;
+  if (!result.Item) return null;
   return {
     storeId: result.Item.storeId as string,
     storeName: result.Item.storeName as string,
     address: result.Item.address as string,
+    postalCode: result.Item.postalCode as string | undefined,
   };
+}
+
+export async function getHebStore(): Promise<HebStoreConfig> {
+  return (await getHebStoreIfConfigured()) ?? DEFAULT_STORE;
 }

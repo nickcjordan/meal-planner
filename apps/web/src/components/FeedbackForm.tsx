@@ -87,7 +87,7 @@ export function FeedbackForm({ session }: { session: PlanningSession }) {
         <h2 className="mt-4 text-lg font-semibold text-foreground">Feedback submitted!</h2>
         <p className="mt-2 text-sm text-muted">Your ratings will help plan better meals next week.</p>
         <button
-          onClick={() => router.push(`/history/${session.id}`)}
+          onClick={() => router.push(`/settings/history/${session.id}`)}
           className="mt-4 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent-hover"
         >
           View Session

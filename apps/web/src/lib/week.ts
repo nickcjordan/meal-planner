@@ -1,13 +1,13 @@
 import type { DayOfWeek } from "@meal-planner/types";
 
 export const DAY_ORDER: DayOfWeek[] = [
+  "sunday",
   "monday",
   "tuesday",
   "wednesday",
   "thursday",
   "friday",
   "saturday",
-  "sunday",
 ];
 
 export const DAY_LABELS: Record<DayOfWeek, string> = {
@@ -29,6 +29,37 @@ export function getCurrentMonday(): string {
   const mm = String(monday.getMonth() + 1).padStart(2, "0");
   const dd = String(monday.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+/** The Monday that "this week" planning targets.
+ *  Mon–Fri → the current week's Monday.
+ *  Sat–Sun → next Monday, because the current week is effectively over. */
+export function getPlanningMonday(): string {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 6=Sat
+  if (day === 0 || day === 6) {
+    const daysUntil = day === 0 ? 1 : 2;
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntil);
+    const yyyy = monday.getFullYear();
+    const mm = String(monday.getMonth() + 1).padStart(2, "0");
+    const dd = String(monday.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return getCurrentMonday();
+}
+
+/**
+ * Format a `YYYY-MM-DD` weekOf string for display, parsing it as a *local* date
+ * (via `T00:00:00`) so it never renders a day early in negative-offset zones the
+ * way `new Date("YYYY-MM-DD")` (UTC-parsed) does. Pass Intl options to match a
+ * given call site; defaults to `{ month: "long", day: "numeric" }`.
+ */
+export function formatWeekOf(
+  weekOf: string,
+  options: Intl.DateTimeFormatOptions = { month: "long", day: "numeric" },
+  locale: string = "en-US",
+): string {
+  return new Date(weekOf + "T00:00:00").toLocaleDateString(locale, options);
 }
 
 export function getTodayDayOfWeek(): DayOfWeek {

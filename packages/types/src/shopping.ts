@@ -15,6 +15,7 @@ export interface HebProductMatch {
   };
   isOnSale?: boolean;
   inStock?: boolean;
+  aisleLocation?: string;
   matchedAt: string;
 }
 
@@ -50,13 +51,6 @@ export interface ShoppingList {
   sessionId: string;
   items: ShoppingListItem[];
   carryoverItems?: ShoppingListCarryover[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ShoppingList {
-  sessionId: string;
-  items: ShoppingListItem[];
   createdAt: string;
   updatedAt: string;
 }

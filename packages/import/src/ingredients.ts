@@ -270,22 +270,35 @@ export function parseIngredientString(raw: string): Ingredient {
   );
   if (parenSizeMatch) {
     const afterParen = afterQty.slice(parenSizeMatch[0].length).trim();
-    // Try to get the container unit after the paren
+    // The parenthetical is the package size (e.g. "14.5 oz"); preserve it as a
+    // prep note rather than as the ingredient's unit.
+    const sizeNumber = parenSizeMatch[1];
+    const sizeUnit =
+      standardizeUnit(parenSizeMatch[2].replace(".", "")) ||
+      parenSizeMatch[2].replace(".", "");
+    const sizeNote = `${sizeNumber} ${sizeUnit}`.trim();
+
+    // Try to get the container unit after the paren ("can", "jar", ...)
     const containerUnit = parseUnit(afterParen);
     if (containerUnit) {
-      const [, afterContainerUnit] = containerUnit;
+      const [containerCanonical, afterContainerUnit] = containerUnit;
       return {
-        name: cleanName(afterContainerUnit),
+        // Mirror the normal branch's fallback so the name is never empty; if
+        // cleanName strips the whole descriptor (e.g. "crushed tomatoes"), keep
+        // the raw remainder before finally falling back to afterQty.
+        name: cleanName(afterContainerUnit) || afterContainerUnit.trim() || afterQty,
         quantity,
-        unit: parenSizeMatch[2].replace(".", "").toLowerCase(),
+        unit: containerCanonical,
+        prep: sizeNote,
       };
     }
+
+    // No container word after the size — treat the parenthetical size as the
+    // actual measure (e.g. "2 (14 oz) tomatoes" → 28 oz tomatoes).
     return {
-      name: cleanName(afterParen),
-      quantity: parseFloat(parenSizeMatch[1]) * quantity,
-      unit:
-        UNIT_MAP[parenSizeMatch[2].replace(".", "").toLowerCase()] ||
-        parenSizeMatch[2].replace(".", ""),
+      name: cleanName(afterParen) || afterParen.trim() || afterQty,
+      quantity: parseFloat(sizeNumber) * quantity,
+      unit: sizeUnit,
     };
   }
 

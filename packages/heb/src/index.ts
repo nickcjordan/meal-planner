@@ -6,6 +6,7 @@ export {
   deleteHebCookies,
   saveHebStore,
   getHebStore,
+  getHebStoreIfConfigured,
 } from "./cookies.js";
 export { searchProducts } from "./search.js";
 export { getWeeklyAd } from "./weekly-ad.js";

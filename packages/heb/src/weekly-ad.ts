@@ -29,6 +29,27 @@ interface FlippItem {
   valid_to?: string;
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parse a flyer `valid_from`. Date-only strings (`YYYY-MM-DD`) are treated as
+ * the start of that day in *local* time rather than UTC midnight.
+ */
+export function parseValidFrom(value: string): Date {
+  return DATE_ONLY.test(value) ? new Date(value + "T00:00:00") : new Date(value);
+}
+
+/**
+ * Parse a flyer `valid_to`. Date-only strings are treated as the *end* of that
+ * day in local time, so an ad valid "through 2026-07-21" stays valid all day on
+ * the 21st instead of expiring the evening before in negative-UTC-offset zones.
+ */
+export function parseValidTo(value: string): Date {
+  return DATE_ONLY.test(value)
+    ? new Date(value + "T23:59:59.999")
+    : new Date(value);
+}
+
 async function fetchFlyers(postalCode: string): Promise<FlippFlyer[]> {
   const url = `${FLIPP_BASE}/flyers?locale=en-us&postal_code=${postalCode}&merchant_id=${HEB_MERCHANT_ID}`;
   const res = await fetch(url);
@@ -41,8 +62,8 @@ async function fetchFlyers(postalCode: string): Promise<FlippFlyer[]> {
   // Flipp's merchant_id filter is unreliable — other retailers leak through
   const now = new Date();
   return data.flyers.filter((f) => {
-    const from = new Date(f.valid_from);
-    const to = new Date(f.valid_to);
+    const from = parseValidFrom(f.valid_from);
+    const to = parseValidTo(f.valid_to);
     if (from > now || to < now) return false;
     return f.merchant.toLowerCase().includes("h-e-b") || f.merchant.toLowerCase() === "heb";
   });

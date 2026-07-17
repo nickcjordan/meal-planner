@@ -8,10 +8,10 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { getSessionByWeek, getActiveGroceryList, getFeedbackForSession } from "@meal-planner/db";
-import { getCurrentMonday, getTodayDayOfWeek, DAY_LABELS } from "@/lib/week";
+import { getPlanningMonday, getTodayDayOfWeek, DAY_LABELS } from "@/lib/week";
 
 export default async function Home() {
-  const weekOf = getCurrentMonday();
+  const weekOf = getPlanningMonday();
   const [session, groceryList] = await Promise.all([
     getSessionByWeek(weekOf),
     getActiveGroceryList(),
@@ -192,7 +192,7 @@ export default async function Home() {
         </Link>
 
         <Link
-          href="/history"
+          href="/settings/history"
           className="flex items-center gap-4 rounded-xl border border-card-border bg-card p-6 transition-all hover:shadow-md hover:border-accent/30"
         >
           <Calendar className="h-6 w-6 shrink-0 text-accent" />

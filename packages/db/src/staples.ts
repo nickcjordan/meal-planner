@@ -1,10 +1,10 @@
-import { PutCommand, DeleteCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, DeleteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import type {
   GroceryStaple,
   CreateGroceryStapleInput,
   DynamoDBRecord,
 } from "@meal-planner/types";
-import { getDocClient, TABLE_NAME } from "./client.js";
+import { getDocClient, TABLE_NAME, scanAll } from "./client.js";
 import { randomUUID } from "crypto";
 
 type StapleRecord = DynamoDBRecord & GroceryStaple;
@@ -43,16 +43,47 @@ export async function addGroceryStaple(input: CreateGroceryStapleInput): Promise
   return item;
 }
 
+/** Find a raw staple record by id, trying GetCommand first then falling back to scan. */
+async function findRawRecord(id: string): Promise<StapleRecord | null> {
+  // Fast path: current SK format
+  const result = await getDocClient().send(
+    new GetCommand({
+      TableName: TABLE_NAME,
+      Key: { PK: "STAPLES#default", SK: `STAPLE#${id}` },
+    }),
+  );
+  if (result.Item) return result.Item as StapleRecord;
+
+  // Slow path: legacy records where SK doesn't match STAPLE#<id>
+  const scanned = await scanAll({
+    TableName: TABLE_NAME,
+    FilterExpression: "entityType = :type",
+    ExpressionAttributeValues: { ":type": "STAPLE" },
+  });
+  for (const item of scanned) {
+    const record = item as StapleRecord;
+    const staple = fromRecord(record);
+    if (staple.id === id) return record;
+  }
+  return null;
+}
+
 export async function updateGroceryStaple(
   id: string,
   updates: Partial<Omit<GroceryStaple, "id" | "createdAt" | "updatedAt">>,
 ): Promise<GroceryStaple | null> {
-  const existing = await getGroceryStaple(id);
-  if (!existing) return null;
+  const raw = await findRawRecord(id);
+  if (!raw) return null;
 
+  // Strip undefined values so callers can't accidentally erase fields
+  const defined = Object.fromEntries(
+    Object.entries(updates).filter(([, v]) => v !== undefined),
+  );
+
+  const existing = fromRecord(raw);
   const updated: GroceryStaple = {
     ...existing,
-    ...updates,
+    ...defined,
     id: existing.id,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
@@ -62,8 +93,8 @@ export async function updateGroceryStaple(
     new PutCommand({
       TableName: TABLE_NAME,
       Item: {
-        PK: "STAPLES#default",
-        SK: `STAPLE#${updated.id}`,
+        PK: raw.PK,
+        SK: raw.SK,
         entityType: "STAPLE" as const,
         ...updated,
       },
@@ -74,8 +105,8 @@ export async function updateGroceryStaple(
 }
 
 export async function getGroceryStaple(id: string): Promise<GroceryStaple | null> {
-  const all = await listGroceryStaples();
-  return all.find((s) => s.id === id) ?? null;
+  const raw = await findRawRecord(id);
+  return raw ? fromRecord(raw) : null;
 }
 
 export async function getGroceryStapleByName(name: string): Promise<GroceryStaple | null> {
@@ -84,25 +115,26 @@ export async function getGroceryStapleByName(name: string): Promise<GroceryStapl
 }
 
 export async function removeGroceryStaple(id: string): Promise<boolean> {
+  const raw = await findRawRecord(id);
+  if (!raw) return false;
+
   await getDocClient().send(
     new DeleteCommand({
       TableName: TABLE_NAME,
-      Key: { PK: "STAPLES#default", SK: `STAPLE#${id}` },
+      Key: { PK: raw.PK, SK: raw.SK },
     }),
   );
   return true;
 }
 
 export async function listGroceryStaples(): Promise<GroceryStaple[]> {
-  const result = await getDocClient().send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: "entityType = :type",
-      ExpressionAttributeValues: { ":type": "STAPLE" },
-    }),
-  );
+  const items = await scanAll({
+    TableName: TABLE_NAME,
+    FilterExpression: "entityType = :type",
+    ExpressionAttributeValues: { ":type": "STAPLE" },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as StapleRecord));
+  return items.map((item) => fromRecord(item as StapleRecord));
 }
 
 export async function listActiveGroceryStaples(): Promise<GroceryStaple[]> {

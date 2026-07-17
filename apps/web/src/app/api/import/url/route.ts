@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import {
   extractRecipeFromUrl,
-  storeImage,
   checkDuplicates,
   normalize,
+  applySwaps,
 } from "@meal-planner/import";
 import type { ImportResult } from "@meal-planner/import";
+import { listActiveIngredientSwaps } from "@meal-planner/db";
 
 export async function POST(request: Request) {
   try {
@@ -49,19 +50,23 @@ export async function POST(request: Request) {
     const normalized = normalize(recipe as unknown as Record<string, unknown>);
     if (normalized.success) {
       recipe = normalized.data;
+
+      // Apply active ingredient swaps
+      const activeSwaps = await listActiveIngredientSwaps();
+      if (activeSwaps.length > 0) {
+        const { recipe: swapped } = applySwaps(
+          recipe,
+          activeSwaps.map((s) => ({ from: s.from, to: s.to })),
+        );
+        recipe = swapped;
+      }
     }
 
-    // Store image in S3 if available
+    // Use the source image URL directly — no S3 upload needed
     let imageUrl: string | undefined;
     if (extraction.sourceImageUrl) {
-      try {
-        imageUrl = await storeImage(extraction.sourceImageUrl);
-        if (imageUrl) {
-          recipe.imageUrl = imageUrl;
-        }
-      } catch {
-        // Image storage failed — continue without image
-      }
+      imageUrl = extraction.sourceImageUrl;
+      recipe.imageUrl = imageUrl;
     }
 
     // Check for duplicates
@@ -80,8 +85,11 @@ export async function POST(request: Request) {
     const message =
       err instanceof Error ? err.message : "Failed to import recipe";
 
-    // Distinguish between fetch errors and other errors
+    // Distinguish between fetch errors and other errors. HTTP-status failures
+    // (403/404/…) are thrown as HttpStatusError with an `HTTP <status>` message
+    // prefix; treat those as fetch failures too rather than a generic 500.
     if (
+      /^HTTP \d{3}/.test(message) ||
       message.includes("fetch") ||
       message.includes("ENOTFOUND") ||
       message.includes("abort")

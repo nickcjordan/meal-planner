@@ -14,12 +14,17 @@ export type EntityType =
   | "INVENTORY"
   | "MEMBER"
   | "ADAPTATION"
-  | "HEBCONFIG";
+  | "HEBCONFIG"
+  | "SIDE"
+  | "SIDETAG"
+  | "SWAP"
+  | "PURCHASELOG";
 
 export interface DynamoDBRecord {
   PK: string;
   SK: string;
   GSI1PK?: string;
   GSI1SK?: string;
+  GSI2PK?: string;
   entityType: EntityType;
 }

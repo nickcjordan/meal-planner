@@ -53,7 +53,7 @@ export interface CarryoverItem {
     recipeName: string;
     requiredQuantity: number;
   };
-  status: "unresolved" | "confirmed" | "added-to-list";
+  status: "unresolved" | "confirmed" | "need";
 }
 
 /** A suggestion surfaced to the user during planning (not yet in the plan) */

@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSessionByWeek, createSession, updateSession } from "@meal-planner/db";
-import type { DayOfWeek, MealType, PlanExtra, SessionStapleItem, CarryoverItem } from "@meal-planner/types";
+import type {
+  DayOfWeek,
+  MealType,
+  PlannedMeal,
+  PlannedSide,
+  PlanExtra,
+  SessionStapleItem,
+  CarryoverItem,
+  CreateSessionInput,
+} from "@meal-planner/types";
 
 interface SaveRequestBody {
   weekOf: string;
@@ -8,6 +17,8 @@ interface SaveRequestBody {
     day: string;
     mealType: string;
     recipeId: string;
+    sides?: PlannedSide[];
+    cookedAt?: string;
   }>;
   extras?: PlanExtra[];
   groceryStaples?: SessionStapleItem[];
@@ -19,32 +30,44 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as SaveRequestBody;
 
-    const meals = body.meals.map((m) => ({
+    // Preserve sides + cookedAt through the save path (they starve four
+    // downstream features — grocery side ingredients, side swap/remove, week
+    // view rendering, and pairing analytics — if dropped here).
+    const meals: PlannedMeal[] = body.meals.map((m) => ({
       day: m.day as DayOfWeek,
       mealType: m.mealType as MealType,
       recipeId: m.recipeId,
+      ...(m.sides !== undefined ? { sides: m.sides } : {}),
+      ...(m.cookedAt !== undefined ? { cookedAt: m.cookedAt } : {}),
     }));
 
     const existing = await getSessionByWeek(body.weekOf);
 
+    // Only touch extras/groceryStaples/carryoverItems when the caller actually
+    // sent the key — passing `undefined` would clobber stored arrays on re-save.
+    const optionalArrays: Pick<
+      Partial<CreateSessionInput>,
+      "extras" | "groceryStaples" | "carryoverItems"
+    > = {};
+    if ("extras" in body) optionalArrays.extras = body.extras;
+    if ("groceryStaples" in body) optionalArrays.groceryStaples = body.groceryStaples;
+    if ("carryoverItems" in body) optionalArrays.carryoverItems = body.carryoverItems;
+
     let session;
     if (existing) {
+      // Re-saving a completed week preserves its completed status.
       session = await updateSession(existing.id, {
         meals,
-        extras: body.extras,
-        groceryStaples: body.groceryStaples,
-        carryoverItems: body.carryoverItems,
+        ...optionalArrays,
         summary: body.summary,
-        status: "confirmed",
+        status: existing.status === "completed" ? "completed" : "confirmed",
       });
     } else {
       session = await createSession({
         weekOf: body.weekOf,
         status: "confirmed",
         meals,
-        extras: body.extras,
-        groceryStaples: body.groceryStaples,
-        carryoverItems: body.carryoverItems,
+        ...optionalArrays,
         summary: body.summary,
       });
     }

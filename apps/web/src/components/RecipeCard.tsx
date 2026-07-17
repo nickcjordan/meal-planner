@@ -2,7 +2,6 @@
 
 import type { Recipe } from "@meal-planner/types";
 import { Clock, Users } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 
 export function RecipeCard({ recipe }: { recipe: Recipe }) {
@@ -11,18 +10,14 @@ export function RecipeCard({ recipe }: { recipe: Recipe }) {
       href={`/recipes/${recipe.id}`}
       className="group block overflow-hidden rounded-xl border border-card-border bg-card shadow-sm transition-all hover:shadow-lg hover:border-accent/30"
     >
-      {recipe.imageUrl ? (
-        <div className="relative h-48 w-full overflow-hidden">
-          <Image
-            src={recipe.imageUrl}
+      {recipe.imageUrl && (
+        <div className="h-48 w-full overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`/api/recipes/${recipe.id}/image`}
             alt={recipe.name}
-            fill
-            className="object-cover transition-transform group-hover:scale-105"
+            className="h-full w-full object-cover transition-transform group-hover:scale-105"
           />
-        </div>
-      ) : (
-        <div className="flex h-44 items-center justify-center bg-tag-bg text-muted text-sm">
-          No image
         </div>
       )}
       <div className="p-6">

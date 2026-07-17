@@ -120,48 +120,72 @@ export function ImportPreview({
       {/* Ingredients + Steps side by side */}
       <div className="grid gap-4 md:grid-cols-2">
         {/* Ingredients */}
-        {recipe.ingredients && recipe.ingredients.length > 0 && (
+        {recipe.ingredientSections && recipe.ingredientSections.length > 0 && (
           <div className="rounded-lg border border-card-border p-4">
             <h4 className="text-sm font-semibold text-foreground">
               Ingredients
               <span className="ml-1.5 text-xs font-normal text-muted">
-                ({recipe.ingredients.length})
+                ({recipe.ingredientSections.reduce((n, s) => n + s.items.length, 0)})
               </span>
             </h4>
-            <ul className="mt-2 space-y-1">
-              {recipe.ingredients.map((ing, i) => (
-                <li key={i} className="text-sm text-muted">
-                  <span className="text-foreground">
-                    {ing.quantity > 0
-                      ? `${formatQuantity(ing.quantity)} ${ing.unit} `
-                      : ""}
-                  </span>
-                  {ing.name}
-                </li>
-              ))}
-            </ul>
+            {recipe.ingredientSections.map((section, si) => (
+              <div key={si}>
+                {section.header && (
+                  <h5 className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted">
+                    {section.header}
+                  </h5>
+                )}
+                <ul className="mt-2 space-y-1">
+                  {section.items.map((ing, i) => (
+                    <li key={i} className="text-sm text-muted">
+                      <span className="text-foreground">
+                        {ing.quantity > 0
+                          ? `${formatQuantity(ing.quantity)} ${ing.unit} `
+                          : ""}
+                      </span>
+                      {ing.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         )}
 
         {/* Steps */}
-        {recipe.steps && recipe.steps.length > 0 && (
+        {recipe.stepSections && recipe.stepSections.length > 0 && (
           <div className="rounded-lg border border-card-border p-4">
             <h4 className="text-sm font-semibold text-foreground">
               Steps
               <span className="ml-1.5 text-xs font-normal text-muted">
-                ({recipe.steps.length})
+                ({recipe.stepSections.reduce((n, s) => n + s.steps.length, 0)})
               </span>
             </h4>
-            <ol className="mt-2 space-y-2">
-              {recipe.steps.map((step, i) => (
-                <li key={i} className="text-sm text-muted">
-                  <span className="mr-1.5 font-medium text-foreground/60">
-                    {i + 1}.
-                  </span>
-                  {step}
-                </li>
-              ))}
-            </ol>
+            {(() => {
+              let stepNum = 0;
+              return recipe.stepSections.map((section, si) => (
+                <div key={si}>
+                  {section.header && (
+                    <h5 className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted">
+                      {section.header}
+                    </h5>
+                  )}
+                  <ol className="mt-2 space-y-2">
+                    {section.steps.map((step) => {
+                      stepNum++;
+                      return (
+                        <li key={stepNum} className="text-sm text-muted">
+                          <span className="mr-1.5 font-medium text-foreground/60">
+                            {stepNum}.
+                          </span>
+                          {step}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              ));
+            })()}
           </div>
         )}
       </div>

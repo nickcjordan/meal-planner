@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   normalize,
-  storeImage,
   checkDuplicates,
   createRecipeInputSchema,
 } from "@meal-planner/import";
@@ -20,9 +19,7 @@ interface ErrorResult {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-
-    const recipes = body.recipes;
+    const { recipes } = await request.json();
     if (!Array.isArray(recipes) || recipes.length === 0) {
       return NextResponse.json(
         { error: "Provide a 'recipes' array with at least one recipe" },
@@ -81,21 +78,6 @@ export async function POST(request: Request) {
           existingName: dupes[0].existingRecipe.name,
         });
         // Still import — let the user decide. Just warn.
-      }
-
-      // Store image if provided as external URL
-      if (
-        recipeInput.imageUrl &&
-        !recipeInput.imageUrl.includes("s3.amazonaws.com")
-      ) {
-        try {
-          const s3Url = await storeImage(recipeInput.imageUrl);
-          if (s3Url) {
-            recipeInput.imageUrl = s3Url;
-          }
-        } catch {
-          // Keep original URL if S3 upload fails
-        }
       }
 
       // Create the recipe

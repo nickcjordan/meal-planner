@@ -1,7 +1,6 @@
 import * as cheerio from "cheerio";
 import { extractRecipeFromUrl } from "../url/extract.js";
 import { normalize } from "../normalize.js";
-import { storeImage } from "../image/store.js";
 import { checkDuplicates } from "../dedup.js";
 import type { BulkScanEvent, ImportResult } from "../types.js";
 
@@ -125,17 +124,11 @@ export async function* bulkScanUrls(
         recipe = normalized.data;
       }
 
-      // Store image
+      // Use the source image URL directly — no S3 upload needed
       let imageUrl: string | undefined;
       if (extraction.sourceImageUrl) {
-        try {
-          imageUrl = await storeImage(extraction.sourceImageUrl);
-          if (imageUrl) {
-            recipe.imageUrl = imageUrl;
-          }
-        } catch {
-          // Continue without image
-        }
+        imageUrl = extraction.sourceImageUrl;
+        recipe.imageUrl = imageUrl;
       }
 
       // Name-based dedup check

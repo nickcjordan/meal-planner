@@ -1,6 +1,6 @@
-import { PutCommand, DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import type { FamilyPreference, CreatePreferenceInput, DynamoDBRecord } from "@meal-planner/types";
-import { getDocClient, TABLE_NAME, GSI1_NAME } from "./client.js";
+import { getDocClient, TABLE_NAME, GSI1_NAME, queryAll } from "./client.js";
 
 type PreferenceRecord = DynamoDBRecord & FamilyPreference;
 
@@ -49,26 +49,22 @@ export async function removePreference(type: string, key: string): Promise<boole
 }
 
 export async function listPreferences(): Promise<FamilyPreference[]> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: "PK = :pk",
-      ExpressionAttributeValues: { ":pk": "PREFS#default" },
-    }),
-  );
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "PK = :pk",
+    ExpressionAttributeValues: { ":pk": "PREFS#default" },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as PreferenceRecord));
+  return items.map((item) => fromRecord(item as PreferenceRecord));
 }
 
 export async function getPreferencesByType(type: string): Promise<FamilyPreference[]> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      IndexName: GSI1_NAME,
-      KeyConditionExpression: "GSI1PK = :pk",
-      ExpressionAttributeValues: { ":pk": `PREFS#TYPE#${type}` },
-    }),
-  );
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    IndexName: GSI1_NAME,
+    KeyConditionExpression: "GSI1PK = :pk",
+    ExpressionAttributeValues: { ":pk": `PREFS#TYPE#${type}` },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as PreferenceRecord));
+  return items.map((item) => fromRecord(item as PreferenceRecord));
 }

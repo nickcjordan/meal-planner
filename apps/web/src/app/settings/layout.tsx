@@ -2,12 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Package, Users, Store } from "lucide-react";
+import { Package, Users, Store, History, RefreshCw, ArrowLeftRight, Salad } from "lucide-react";
 
 const SETTINGS_NAV = [
   { href: "/settings/kitchen", label: "My Kitchen", icon: Package },
+  { href: "/settings/recurring", label: "Recurring", icon: RefreshCw },
+  { href: "/settings/sides", label: "Sides", icon: Salad },
+  { href: "/settings/swaps", label: "Swaps", icon: ArrowLeftRight },
   { href: "/settings/preferences", label: "Family", icon: Users },
   { href: "/settings/heb", label: "H-E-B", icon: Store },
+  { href: "/settings/history", label: "History", icon: History },
 ];
 
 function isActive(pathname: string, href: string) {

@@ -18,6 +18,7 @@ import {
   getRecipeHistory,
   listPantryItems,
   addPantryItem,
+  updatePantryItem,
   removePantryItem,
   getShoppingList,
   getActiveGroceryList,
@@ -45,25 +46,44 @@ import {
   addDietaryAdaptation,
   updateDietaryAdaptation,
   removeDietaryAdaptation,
+  getSide,
+  getSidesByBase,
+  searchSides,
+  createSide,
+  updateSide,
+  deleteSide,
+  getSidePairingStats,
+  getInlineSideFrequencies,
+  listActiveIngredientSwaps,
+  listIngredientSwaps,
+  addIngredientSwap,
+  updateIngredientSwap,
+  removeIngredientSwap,
+  getPlanningCandidates,
 } from "@meal-planner/db";
 import {
   extractRecipeFromUrl,
   normalize,
   checkDuplicates,
+  applySwaps,
 } from "@meal-planner/import";
 import { getWeeklyAd } from "@meal-planner/heb";
 import type {
   DayOfWeek,
   MealType,
+  PlannedMeal,
+  PlannedSide,
   CreateRecipeInput,
   PreferenceType,
   AdaptationLeniency,
   SubstitutionRule,
+  SideCategory,
+  SideComplexity,
 } from "@meal-planner/types";
 
 export const searchRecipes = tool(
   "search_recipes",
-  "Search the recipe library by name, tag, or category. Returns condensed summaries (not full ingredients).",
+  "Search the recipe library by name, tag, or category. Returns condensed summaries (not full ingredients). Use for browsing and non-planning queries — during planning, use get_planning_candidates instead.",
   {
     query: z.string().optional().describe("Text to search in recipe names and descriptions"),
     tag: z.string().optional().describe("Filter by tag (e.g. 'italian', 'quick', 'chicken')"),
@@ -117,6 +137,24 @@ export const getRecipeDetails = tool(
       return { content: [{ type: "text" as const, text: "Recipe not found" }] };
     }
     return { content: [{ type: "text" as const, text: JSON.stringify(recipe, null, 2) }] };
+  },
+  { annotations: { readOnlyHint: true } },
+);
+
+export const getPlanningCandidatesTool = tool(
+  "get_planning_candidates",
+  "Get a pre-scored shortlist of recipe candidates for meal planning. Reads preferences, family members, recent history, and pantry data internally — returns scored candidates with full ingredient data plus a context summary. Call this instead of search_recipes during planning.",
+  {
+    weekOf: z.string().describe("ISO date string for the Monday of the target week (e.g. '2026-04-21')"),
+  },
+  async (args) => {
+    const result = await getPlanningCandidates(args.weekOf);
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify(result, null, 2),
+      }],
+    };
   },
   { annotations: { readOnlyHint: true } },
 );
@@ -254,6 +292,36 @@ export const removePantryItemTool = tool(
   },
 );
 
+export const updatePantryItemTool = tool(
+  "update_pantry_item",
+  "Update an existing pantry item — rename it, change its category, add aliases, or add notes.",
+  {
+    name: z.string().describe("Current name of the pantry item to update"),
+    newName: z.string().optional().describe("New name for the item"),
+    category: z.string().optional().describe("New category"),
+    aliases: z.array(z.string()).optional().describe("Alias names for fuzzy matching (e.g. 'boneless skinless chicken breast' for 'Chicken Breast')"),
+    notes: z.string().optional().describe("Optional notes about the item"),
+  },
+  async (args) => {
+    const items = await listPantryItems();
+    const match = items.find((i) => i.name.toLowerCase() === args.name.toLowerCase());
+    if (!match) {
+      return { content: [{ type: "text" as const, text: `Pantry item "${args.name}" not found` }] };
+    }
+    const updates: Record<string, unknown> = {};
+    if (args.newName) updates.name = args.newName;
+    if (args.category) updates.category = args.category;
+    if (args.aliases) updates.aliases = args.aliases;
+    if (args.notes !== undefined) updates.notes = args.notes;
+
+    const updated = await updatePantryItem(match.id, updates);
+    if (!updated) {
+      return { content: [{ type: "text" as const, text: `Failed to update pantry item "${args.name}"` }] };
+    }
+    return { content: [{ type: "text" as const, text: `Updated pantry item: ${updated.name} (${updated.category})` }] };
+  },
+);
+
 export const saveMealPlan = tool(
   "save_meal_plan",
   "Save the confirmed meal plan for the week. ONLY call this when the user has explicitly confirmed they are happy with the plan.",
@@ -264,6 +332,19 @@ export const saveMealPlan = tool(
         day: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
         mealType: z.enum(["dinner", "lunch", "breakfast"]),
         recipeId: z.string(),
+        sides: z.array(z.object({
+          sideId: z.string().optional().describe("Side ID from the library (omit for inline sides)"),
+          sideName: z.string().describe("Display name of the side"),
+          sideCategory: z.enum(["green", "starch", "grain", "bread", "legume", "salad", "other"]).describe("Category of the side"),
+          complexity: z.enum(["effortless", "simple", "prepared"]).describe("Side complexity level"),
+          ingredients: z.array(z.object({
+            name: z.string(),
+            quantity: z.number(),
+            unit: z.string(),
+            category: z.string().optional(),
+          })).optional().describe("Ingredients for inline sides (omit for library sides)"),
+          baseIngredient: z.string().optional().describe("Base ingredient grouping key (e.g. 'broccoli')"),
+        })).optional().describe("0-2 sides for this meal, matching the sides presented in present_meal_plan. Omit for self-contained meals."),
       }),
     ).describe("The confirmed meals for the week"),
     summary: z.string().describe("Brief summary of this week's plan and reasoning"),
@@ -271,10 +352,29 @@ export const saveMealPlan = tool(
   async (args) => {
     const existing = await getSessionByWeek(args.weekOf);
 
-    const meals = args.meals.map((m) => ({
+    // Preserve sides through the save path — map the present_meal_plan side
+    // shape into stored PlannedSide (ref when a library sideId is present,
+    // otherwise inline with its ingredients).
+    const meals: PlannedMeal[] = args.meals.map((m) => ({
       day: m.day as DayOfWeek,
       mealType: m.mealType as MealType,
       recipeId: m.recipeId,
+      ...(m.sides
+        ? {
+            sides: m.sides.map((s): PlannedSide =>
+              s.sideId
+                ? { kind: "ref" as const, sideId: s.sideId }
+                : {
+                    kind: "inline" as const,
+                    name: s.sideName,
+                    ingredients: s.ingredients ?? [],
+                    complexity: s.complexity as SideComplexity,
+                    baseIngredient: s.baseIngredient,
+                    sideCategory: s.sideCategory as SideCategory,
+                  },
+            ),
+          }
+        : {}),
     }));
 
     let session;
@@ -282,7 +382,7 @@ export const saveMealPlan = tool(
       session = await updateSession(existing.id, {
         meals,
         summary: args.summary,
-        status: "confirmed",
+        status: existing.status === "completed" ? "completed" : "confirmed",
       });
     } else {
       session = await createSession({
@@ -328,6 +428,20 @@ export const presentMealPlan = tool(
           skipReason: z.string().optional().describe("Why not adapting (when applied=false)"),
           skipNote: z.string().optional().describe("What to do instead (e.g. 'Take Lactaid pill')"),
         })).optional().describe("Dietary adaptation decisions for this meal. Include for every meal that has applicable adaptations."),
+        sides: z.array(z.object({
+          sideId: z.string().optional().describe("Side ID from the library (omit for inline sides)"),
+          sideName: z.string().describe("Display name of the side"),
+          sideCategory: z.enum(["green", "starch", "grain", "bread", "legume", "salad", "other"]).describe("Category of the side"),
+          complexity: z.enum(["effortless", "simple", "prepared"]).describe("Side complexity level"),
+          reasoning: z.string().optional().describe("Why this side pairs well with the main"),
+          ingredients: z.array(z.object({
+            name: z.string(),
+            quantity: z.number(),
+            unit: z.string(),
+            category: z.string().optional(),
+          })).optional().describe("Ingredients for inline sides (omit for library sides)"),
+          baseIngredient: z.string().optional().describe("Base ingredient grouping key (e.g. 'broccoli')"),
+        })).optional().describe("0-2 sides for this meal. Most dinners should have 1-2 sides (green + starch). Omit for self-contained meals (soups, stews, rich pasta)."),
       }),
     ).describe("The proposed meals for the week"),
     complexityMix: z.object({
@@ -409,6 +523,54 @@ export const presentMealPlan = tool(
   async () => {
     return {
       content: [{ type: "text" as const, text: "Meal plan presented to user." }],
+    };
+  },
+);
+
+export const presentAlternatives = tool(
+  "present_alternatives",
+  "Present alternative meal options for slots the user wants to re-spin. Call this when the user selects meals to replace and asks for alternatives. Present 3 alternatives per slot so the user can pick their preferred replacement inline.",
+  {
+    slots: z.array(z.object({
+      day: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
+      mealType: z.enum(["dinner", "lunch", "breakfast"]),
+      alternatives: z.array(z.object({
+        recipeId: z.string().describe("The recipe ID from the database"),
+        recipeName: z.string().describe("The recipe name for display"),
+        complexity: z.enum(["staple", "standard", "involved"]).describe("The recipe's complexity level"),
+        reasoning: z.string().describe("Why this is a good replacement, considering the rest of the plan"),
+        adaptations: z.array(z.object({
+          adaptationName: z.string(),
+          memberName: z.string(),
+          applied: z.boolean(),
+          swaps: z.array(z.object({
+            from: z.string(),
+            to: z.string(),
+            quality: z.enum(["exact", "approximate"]),
+          })).optional(),
+          skipReason: z.string().optional(),
+          skipNote: z.string().optional(),
+        })).optional(),
+        sides: z.array(z.object({
+          sideId: z.string().optional(),
+          sideName: z.string(),
+          sideCategory: z.enum(["green", "starch", "grain", "bread", "legume", "salad", "other"]),
+          complexity: z.enum(["effortless", "simple", "prepared"]),
+          reasoning: z.string().optional(),
+          ingredients: z.array(z.object({
+            name: z.string(),
+            quantity: z.number(),
+            unit: z.string(),
+            category: z.string().optional(),
+          })).optional(),
+          baseIngredient: z.string().optional(),
+        })).optional().describe("Suggested sides for this alternative"),
+      })).min(2).max(4).describe("2-4 alternative meals for this slot"),
+    })).describe("Slots the user wants to replace, each with alternative options"),
+  },
+  async () => {
+    return {
+      content: [{ type: "text" as const, text: "Alternatives presented to user." }],
     };
   },
 );
@@ -539,34 +701,60 @@ export const createRecipeTool = tool(
   {
     name: z.string().describe("Recipe name"),
     description: z.string().describe("Brief description of the dish"),
-    ingredients: z.array(z.object({
-      name: z.string(),
-      quantity: z.number(),
-      unit: z.string(),
-      category: z.string().optional(),
-    })).describe("List of ingredients"),
-    steps: z.array(z.string()).describe("Cooking steps in order"),
+    ingredientSections: z.array(z.object({
+      header: z.string().optional().describe("Section header (e.g. 'For the Sauce'). Omit for simple recipes."),
+      items: z.array(z.object({
+        name: z.string(),
+        quantity: z.number(),
+        unit: z.string(),
+        category: z.string().optional(),
+      })),
+    })).describe("Ingredient sections. Use one section with no header for simple recipes."),
+    stepSections: z.array(z.object({
+      header: z.string().optional().describe("Section header (e.g. 'Make the Sauce'). Omit for simple recipes."),
+      steps: z.array(z.string()),
+    })).describe("Step sections. Use one section with no header for simple recipes."),
     cookTime: z.number().describe("Cook time in minutes"),
     prepTime: z.number().describe("Prep time in minutes"),
+    inactiveTime: z.number().optional().describe("Inactive time in minutes (marinating, resting, chilling)"),
     servings: z.number().describe("Number of servings"),
+    yieldDescription: z.string().optional().describe("Yield description (e.g. 'makes 24 cookies')"),
     tags: z.array(z.string()).describe("Tags (e.g. 'italian', 'chicken', 'quick')"),
     categories: z.array(z.string()).describe("Meal categories (e.g. 'dinner', 'lunch')"),
     complexity: z.enum(["staple", "standard", "involved"]).describe("Recipe complexity level"),
+    notes: z.array(z.string()).optional().describe("Tips, make-ahead notes, or serving suggestions"),
+    equipment: z.array(z.string()).optional().describe("Required equipment (e.g. 'stand mixer', 'Dutch oven')"),
+    storage: z.object({
+      makeAhead: z.string().optional(),
+      refrigerate: z.string().optional(),
+      freeze: z.string().optional(),
+    }).optional().describe("Storage and make-ahead instructions"),
     sourceUrl: z.string().optional().describe("URL where the recipe came from"),
+    imageUrl: z.string().optional().describe("URL of a photo for this recipe (external URLs are fine)"),
+    primaryProtein: z.string().optional().describe("Primary protein in this recipe: chicken, beef, pork, salmon, shrimp, tofu, turkey, lamb, or none"),
+    cuisineType: z.string().optional().describe("Primary cuisine type: italian, mexican, asian, american, mediterranean, indian, thai, korean, japanese, greek, french, cajun, etc."),
   },
   async (args) => {
     const input: CreateRecipeInput = {
       name: args.name,
       description: args.description,
-      ingredients: args.ingredients,
-      steps: args.steps,
+      ingredientSections: args.ingredientSections,
+      stepSections: args.stepSections,
       cookTime: args.cookTime,
       prepTime: args.prepTime,
+      inactiveTime: args.inactiveTime,
       servings: args.servings,
+      yieldDescription: args.yieldDescription,
       tags: args.tags,
       categories: args.categories,
       complexity: args.complexity,
+      notes: args.notes,
+      equipment: args.equipment,
+      storage: args.storage,
       sourceUrl: args.sourceUrl,
+      imageUrl: args.imageUrl,
+      primaryProtein: args.primaryProtein,
+      cuisineType: args.cuisineType,
     };
     const recipe = await createRecipe(input);
     return {
@@ -577,24 +765,42 @@ export const createRecipeTool = tool(
 
 export const updateRecipeTool = tool(
   "update_recipe",
-  "Update fields on an existing recipe. Use for tag changes, fixing cook times, updating ingredients, etc.",
+  "Update fields on an existing recipe. Use for tag changes, fixing cook times, updating ingredients, reorganizing into sections, adding notes, etc.",
   {
     recipeId: z.string().describe("The recipe ID to update"),
     name: z.string().optional().describe("New name"),
     description: z.string().optional().describe("New description"),
-    ingredients: z.array(z.object({
-      name: z.string(),
-      quantity: z.number(),
-      unit: z.string(),
-      category: z.string().optional(),
-    })).optional().describe("Full replacement ingredient list"),
-    steps: z.array(z.string()).optional().describe("Full replacement step list"),
+    ingredientSections: z.array(z.object({
+      header: z.string().optional().describe("Section header (e.g. 'For the Sauce'). Omit for simple recipes."),
+      items: z.array(z.object({
+        name: z.string(),
+        quantity: z.number(),
+        unit: z.string(),
+        category: z.string().optional(),
+      })),
+    })).optional().describe("Full replacement ingredient sections"),
+    stepSections: z.array(z.object({
+      header: z.string().optional().describe("Section header. Omit for simple recipes."),
+      steps: z.array(z.string()),
+    })).optional().describe("Full replacement step sections"),
     cookTime: z.number().optional().describe("Cook time in minutes"),
     prepTime: z.number().optional().describe("Prep time in minutes"),
+    inactiveTime: z.number().optional().describe("Inactive time in minutes (marinating, resting, chilling)"),
     servings: z.number().optional().describe("Number of servings"),
+    yieldDescription: z.string().optional().describe("Yield description (e.g. 'makes 24 cookies')"),
     tags: z.array(z.string()).optional().describe("Full replacement tag list"),
     categories: z.array(z.string()).optional().describe("Full replacement category list"),
     complexity: z.enum(["staple", "standard", "involved"]).optional().describe("Recipe complexity"),
+    notes: z.array(z.string()).optional().describe("Tips, make-ahead notes, or serving suggestions"),
+    equipment: z.array(z.string()).optional().describe("Required equipment"),
+    storage: z.object({
+      makeAhead: z.string().optional(),
+      refrigerate: z.string().optional(),
+      freeze: z.string().optional(),
+    }).optional().describe("Storage and make-ahead instructions"),
+    primaryProtein: z.string().optional().describe("Primary protein: chicken, beef, pork, salmon, shrimp, tofu, turkey, lamb, or none"),
+    cuisineType: z.string().optional().describe("Primary cuisine type: italian, mexican, asian, american, mediterranean, indian, thai, korean, japanese, greek, french, cajun, etc."),
+    imageUrl: z.string().optional().describe("URL of a photo for this recipe (external URLs are fine)"),
   },
   async (args) => {
     const { recipeId, ...updates } = args;
@@ -1060,8 +1266,20 @@ export const importRecipeFromUrlTool = tool(
         return { content: [{ type: "text" as const, text: `Possible duplicates found: ${dupeInfo}. Recipe extracted but NOT saved. Use create_recipe to save it manually if desired.\n\nExtracted: ${JSON.stringify(normalized.data, null, 2)}` }] };
       }
 
-      const recipe = await createRecipe({ ...normalized.data, sourceUrl: args.url });
-      return { content: [{ type: "text" as const, text: `Imported recipe: ${recipe.name} (ID: ${recipe.id})\nComplexity: ${recipe.complexity}, ${recipe.ingredients.length} ingredients, ${recipe.steps.length} steps` }] };
+      // Apply active ingredient swaps before saving
+      const activeSwaps = await listActiveIngredientSwaps();
+      const { recipe: swappedData, applied: swapResults } = applySwaps(
+        normalized.data,
+        activeSwaps.map((s) => ({ from: s.from, to: s.to })),
+      );
+
+      const recipe = await createRecipe({ ...swappedData, sourceUrl: args.url });
+      const ingCount = recipe.ingredientSections.reduce((n: number, s: { items: unknown[] }) => n + s.items.length, 0);
+      const stepCount = recipe.stepSections.reduce((n: number, s: { steps: unknown[] }) => n + s.steps.length, 0);
+      const swapNote = swapResults.length > 0
+        ? `\nAuto swaps applied: ${swapResults.map((s) => `${s.originalName} → ${s.newName}`).join(", ")}`
+        : "";
+      return { content: [{ type: "text" as const, text: `Imported recipe: ${recipe.name} (ID: ${recipe.id})\nComplexity: ${recipe.complexity}, ${ingCount} ingredients, ${stepCount} steps${swapNote}` }] };
     } catch (err) {
       return { content: [{ type: "text" as const, text: `Failed to import from URL: ${String(err)}` }] };
     }
@@ -1112,8 +1330,257 @@ export const getWeeklyAdTool = tool(
   { annotations: { readOnlyHint: true } },
 );
 
+// --- Side tools ---
+
+export const listSidesTool = tool(
+  "list_sides",
+  "Search and filter the sides library. Returns all sides or filtered by category, complexity, tag, or name search.",
+  {
+    category: z.enum(["green", "starch", "grain", "bread", "legume", "salad", "other"]).optional().describe("Filter by side category"),
+    complexity: z.enum(["effortless", "simple", "prepared"]).optional().describe("Filter by complexity"),
+    tag: z.string().optional().describe("Filter by tag (e.g. 'kid-friendly', 'asian')"),
+    query: z.string().optional().describe("Text search in name, base ingredient, or prep style"),
+  },
+  async (args) => {
+    const sides = await searchSides({
+      category: args.category as SideCategory | undefined,
+      complexity: args.complexity as SideComplexity | undefined,
+      tags: args.tag ? [args.tag] : undefined,
+      query: args.query,
+    });
+
+    const grouped: Record<string, typeof sides> = {};
+    for (const side of sides) {
+      const cat = side.sideCategory;
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(side);
+    }
+
+    return { content: [{ type: "text" as const, text: JSON.stringify(grouped, null, 2) }] };
+  },
+  { annotations: { readOnlyHint: true } },
+);
+
+export const getSideTool = tool(
+  "get_side",
+  "Get full details for a side by ID.",
+  {
+    sideId: z.string().describe("The side ID"),
+  },
+  async (args) => {
+    const side = await getSide(args.sideId);
+    if (!side) {
+      return { content: [{ type: "text" as const, text: "Side not found" }] };
+    }
+    return { content: [{ type: "text" as const, text: JSON.stringify(side, null, 2) }] };
+  },
+  { annotations: { readOnlyHint: true } },
+);
+
+export const getSidesByBaseTool = tool(
+  "get_sides_by_base",
+  "Get all variations of a side by base ingredient (e.g. all 'broccoli' preps).",
+  {
+    baseIngredient: z.string().describe("Base ingredient to search for (e.g. 'broccoli', 'rice')"),
+  },
+  async (args) => {
+    const sides = await getSidesByBase(args.baseIngredient);
+    return { content: [{ type: "text" as const, text: JSON.stringify(sides, null, 2) }] };
+  },
+  { annotations: { readOnlyHint: true } },
+);
+
+export const manageSideTool = tool(
+  "manage_side",
+  "Create, update, or delete a side in the library. Use this to manage the curated sides library or to promote frequently-used inline sides.",
+  {
+    action: z.enum(["create", "update", "delete"]).describe("Action to perform"),
+    sideId: z.string().optional().describe("Side ID (required for update/delete)"),
+    name: z.string().optional().describe("Side name (required for create)"),
+    baseIngredient: z.string().optional().describe("Base ingredient grouping key (required for create)"),
+    prepStyle: z.string().optional().describe("Preparation style (e.g. 'steamed', 'roasted')"),
+    complexity: z.enum(["effortless", "simple", "prepared"]).optional().describe("Complexity level (required for create)"),
+    ingredients: z.array(z.object({
+      name: z.string(),
+      quantity: z.number(),
+      unit: z.string(),
+      category: z.string().optional(),
+      optional: z.boolean().optional(),
+    })).optional().describe("Ingredient list (required for create)"),
+    prepTime: z.number().optional().describe("Prep time in minutes"),
+    cookTime: z.number().optional().describe("Cook time in minutes"),
+    servings: z.number().optional().describe("Number of servings"),
+    tags: z.array(z.string()).optional().describe("Tags for filtering"),
+    sideCategory: z.enum(["green", "starch", "grain", "bread", "legume", "salad", "other"]).optional().describe("Category (required for create)"),
+    pairingHints: z.array(z.string()).optional().describe("Cuisine/protein pairing hints"),
+    prepNotes: z.string().optional().describe("Brief prep instructions"),
+  },
+  async (args) => {
+    switch (args.action) {
+      case "create": {
+        if (!args.name || !args.baseIngredient || !args.complexity || !args.ingredients || !args.sideCategory) {
+          return { content: [{ type: "text" as const, text: "Missing required fields: name, baseIngredient, complexity, ingredients, sideCategory" }] };
+        }
+        const side = await createSide({
+          name: args.name,
+          baseIngredient: args.baseIngredient,
+          prepStyle: args.prepStyle,
+          complexity: args.complexity as SideComplexity,
+          ingredients: args.ingredients,
+          prepTime: args.prepTime,
+          cookTime: args.cookTime,
+          servings: args.servings,
+          tags: args.tags ?? [],
+          sideCategory: args.sideCategory as SideCategory,
+          pairingHints: args.pairingHints,
+          prepNotes: args.prepNotes,
+        });
+        return { content: [{ type: "text" as const, text: `Created side: ${side.name} (${side.id})` }] };
+      }
+      case "update": {
+        if (!args.sideId) {
+          return { content: [{ type: "text" as const, text: "Missing sideId for update" }] };
+        }
+        const updates: Record<string, unknown> = {};
+        if (args.name) updates.name = args.name;
+        if (args.baseIngredient) updates.baseIngredient = args.baseIngredient;
+        if (args.prepStyle !== undefined) updates.prepStyle = args.prepStyle;
+        if (args.complexity) updates.complexity = args.complexity;
+        if (args.ingredients) updates.ingredients = args.ingredients;
+        if (args.prepTime !== undefined) updates.prepTime = args.prepTime;
+        if (args.cookTime !== undefined) updates.cookTime = args.cookTime;
+        if (args.servings !== undefined) updates.servings = args.servings;
+        if (args.tags) updates.tags = args.tags;
+        if (args.sideCategory) updates.sideCategory = args.sideCategory;
+        if (args.pairingHints) updates.pairingHints = args.pairingHints;
+        if (args.prepNotes !== undefined) updates.prepNotes = args.prepNotes;
+        const updated = await updateSide(args.sideId, updates);
+        if (!updated) {
+          return { content: [{ type: "text" as const, text: `Side ${args.sideId} not found` }] };
+        }
+        return { content: [{ type: "text" as const, text: `Updated side: ${updated.name}` }] };
+      }
+      case "delete": {
+        if (!args.sideId) {
+          return { content: [{ type: "text" as const, text: "Missing sideId for delete" }] };
+        }
+        const deleted = await deleteSide(args.sideId);
+        if (!deleted) {
+          return { content: [{ type: "text" as const, text: `Side ${args.sideId} not found` }] };
+        }
+        return { content: [{ type: "text" as const, text: `Deleted side ${args.sideId}` }] };
+      }
+    }
+  },
+);
+
+export const getSidePairingsTool = tool(
+  "get_side_pairings",
+  "Get side-meal pairing statistics derived from historical sessions. Shows which sides are most commonly paired with which recipes, helping make smarter side recommendations.",
+  {
+    sessionsBack: z.number().optional().describe("Number of recent sessions to analyze (default 12)"),
+  },
+  async (args) => {
+    const stats = await getSidePairingStats(args.sessionsBack);
+    return { content: [{ type: "text" as const, text: JSON.stringify(stats, null, 2) }] };
+  },
+  { annotations: { readOnlyHint: true } },
+);
+
+export const getInlineSideFrequenciesTool = tool(
+  "get_inline_side_frequencies",
+  "Find inline (non-library) sides that have been used 3+ times. Use during planning to suggest promoting frequently-used inline sides to the curated library.",
+  {
+    sessionsBack: z.number().optional().describe("Number of recent sessions to analyze (default 12)"),
+  },
+  async (args) => {
+    const frequencies = await getInlineSideFrequencies(args.sessionsBack);
+    if (frequencies.length === 0) {
+      return { content: [{ type: "text" as const, text: "No frequently-used inline sides found." }] };
+    }
+    return { content: [{ type: "text" as const, text: JSON.stringify(frequencies, null, 2) }] };
+  },
+  { annotations: { readOnlyHint: true } },
+);
+
+// --- Ingredient Swap tools ---
+
+export const getIngredientSwapsTool = tool(
+  "get_ingredient_swaps",
+  "Get the family's configured auto swaps — ingredient replacements applied automatically during planning (e.g. shallots -> onion). These are convenience preferences, not dietary.",
+  {},
+  async () => {
+    const swaps = await listActiveIngredientSwaps();
+    return { content: [{ type: "text" as const, text: JSON.stringify(swaps, null, 2) }] };
+  },
+  { annotations: { readOnlyHint: true } },
+);
+
+export const manageIngredientSwapTool = tool(
+  "manage_ingredient_swap",
+  "Add, update, or remove an ingredient auto swap. Use when the user says 'always use onion instead of shallots' or 'stop swapping ghee'.",
+  {
+    action: z.enum(["add", "update", "remove"]).describe("What to do"),
+    id: z.string().optional().describe("Swap ID (required for update/remove)"),
+    from: z.string().optional().describe("Original ingredient to match (required for add)"),
+    to: z.string().optional().describe("Replacement ingredient (required for add)"),
+    category: z.string().optional().describe("Category (produce, dairy, pantry, meat, spices, other)"),
+    reason: z.string().optional().describe("Why this swap exists (e.g. 'overpriced', 'hard to find')"),
+    isActive: z.boolean().optional().describe("Whether the swap is active"),
+  },
+  async (args) => {
+    switch (args.action) {
+      case "add": {
+        if (!args.from || !args.to) {
+          return { content: [{ type: "text" as const, text: "'from' and 'to' are required for add" }] };
+        }
+        const swap = await addIngredientSwap({
+          from: args.from,
+          to: args.to,
+          category: args.category ?? "other",
+          reason: args.reason,
+          isActive: args.isActive ?? true,
+        });
+        return { content: [{ type: "text" as const, text: `Added auto swap: ${swap.from} → ${swap.to}` }] };
+      }
+      case "update": {
+        if (!args.id) {
+          return { content: [{ type: "text" as const, text: "id is required for update" }] };
+        }
+        const updated = await updateIngredientSwap(args.id, {
+          from: args.from,
+          to: args.to,
+          category: args.category,
+          reason: args.reason,
+          isActive: args.isActive,
+        });
+        if (!updated) {
+          return { content: [{ type: "text" as const, text: `Swap ${args.id} not found` }] };
+        }
+        return { content: [{ type: "text" as const, text: `Updated swap: ${updated.from} → ${updated.to}` }] };
+      }
+      case "remove": {
+        if (!args.id) {
+          // Try to find by "from" name
+          const all = await listIngredientSwaps();
+          const match = all.find((s) => s.from.toLowerCase() === (args.from ?? "").toLowerCase());
+          if (!match) {
+            return { content: [{ type: "text" as const, text: `Swap not found. Provide an id or a 'from' name.` }] };
+          }
+          await removeIngredientSwap(match.id);
+          return { content: [{ type: "text" as const, text: `Removed swap: ${match.from} → ${match.to}` }] };
+        }
+        await removeIngredientSwap(args.id);
+        return { content: [{ type: "text" as const, text: "Swap removed" }] };
+      }
+    }
+  },
+);
+
 export const allTools = [
-  // Read tools
+  // Read tools — planning
+  getPlanningCandidatesTool,
+  // Read tools — browsing & history
   searchRecipes,
   getRecipeDetails,
   getRecentMealPlans,
@@ -1129,9 +1596,11 @@ export const allTools = [
   // Write tools
   saveMealPlan,
   presentMealPlan,
+  presentAlternatives,
   manageGroceryStaple,
   saveFeedbackTool,
   addPantryItemTool,
+  updatePantryItemTool,
   removePantryItemTool,
   createRecipeTool,
   updateRecipeTool,
@@ -1158,4 +1627,14 @@ export const allTools = [
   importRecipeFromUrlTool,
   getActiveGroceryListTool,
   getWeeklyAdTool,
+  // Ingredient Swaps
+  getIngredientSwapsTool,
+  manageIngredientSwapTool,
+  // Sides
+  listSidesTool,
+  getSideTool,
+  getSidesByBaseTool,
+  manageSideTool,
+  getSidePairingsTool,
+  getInlineSideFrequenciesTool,
 ];

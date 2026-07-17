@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Settings, Menu, X } from "lucide-react";
 
 const NAV_LINKS = [
@@ -14,12 +14,10 @@ const NAV_LINKS = [
 
 const SETTINGS_LINKS = [
   { href: "/settings/kitchen", label: "My Kitchen" },
+  { href: "/settings/recurring", label: "Recurring" },
   { href: "/settings/preferences", label: "Family" },
   { href: "/settings/heb", label: "H-E-B" },
-];
-
-const SETTINGS_SECONDARY = [
-  { href: "/history", label: "History" },
+  { href: "/settings/history", label: "History" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -28,43 +26,24 @@ function isActive(pathname: string, href: string) {
 }
 
 function isSettingsActive(pathname: string) {
-  return (
-    pathname.startsWith("/settings") ||
-    pathname.startsWith("/history")
-  );
+  return pathname.startsWith("/settings");
 }
 
 export function NavBar() {
   const pathname = usePathname();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuPathname, setMenuPathname] = useState(pathname);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close menus when pathname changes (React-endorsed derived state pattern)
+  // Close mobile menu when pathname changes
   if (menuPathname !== pathname) {
     setMenuPathname(pathname);
-    if (settingsOpen) setSettingsOpen(false);
     if (mobileOpen) setMobileOpen(false);
   }
 
-  // Close dropdown on click outside
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setSettingsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [settingsOpen]);
-
-  // Close menus on Escape
+  // Close menu on Escape
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setSettingsOpen(false);
         setMobileOpen(false);
       }
     };
@@ -100,53 +79,18 @@ export function NavBar() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Settings dropdown — desktop */}
-          <div ref={dropdownRef} className="relative hidden md:block">
-            <button
-              onClick={() => setSettingsOpen(!settingsOpen)}
-              className={`rounded-lg p-2 transition-colors ${
-                isSettingsActive(pathname)
-                  ? "bg-tag-bg text-foreground"
-                  : "text-muted hover:bg-tag-bg hover:text-foreground"
-              }`}
-              aria-label="Settings"
-              aria-expanded={settingsOpen}
-            >
-              <Settings className="h-5 w-5" />
-            </button>
-
-            {settingsOpen && (
-              <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-card-border bg-card py-1 shadow-lg">
-                {SETTINGS_LINKS.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`block px-4 py-2.5 text-sm font-medium transition-colors ${
-                      isActive(pathname, link.href)
-                        ? "bg-tag-bg text-foreground"
-                        : "text-muted hover:bg-tag-bg hover:text-foreground"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-                <div className="mx-4 my-1 border-t border-card-border" />
-                {SETTINGS_SECONDARY.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`block px-4 py-2.5 text-sm font-medium transition-colors ${
-                      isActive(pathname, link.href)
-                        ? "bg-tag-bg text-foreground"
-                        : "text-muted hover:bg-tag-bg hover:text-foreground"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Settings link — desktop */}
+          <Link
+            href="/settings/kitchen"
+            className={`hidden rounded-lg p-2 transition-colors md:block ${
+              isSettingsActive(pathname)
+                ? "bg-tag-bg text-foreground"
+                : "text-muted hover:bg-tag-bg hover:text-foreground"
+            }`}
+            aria-label="Settings"
+          >
+            <Settings className="h-5 w-5" />
+          </Link>
 
           {/* Mobile hamburger */}
           <button
@@ -179,19 +123,6 @@ export function NavBar() {
             ))}
             <div className="mx-3 my-1 border-t border-card-border" />
             {SETTINGS_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive(pathname, link.href)
-                    ? "bg-tag-bg text-foreground"
-                    : "text-muted hover:bg-tag-bg hover:text-foreground"
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
-            {SETTINGS_SECONDARY.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}

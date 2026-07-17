@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["192.168.68.65"],
+  allowedDevOrigins: ["192.168.68.*"],
   async redirects() {
     return [
       {
@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
         source: "/settings/staples",
         destination: "/settings/kitchen",
         permanent: true,
+      },
+      {
+        source: "/settings",
+        destination: "/settings/kitchen",
+        permanent: false,
       },
     ];
   },

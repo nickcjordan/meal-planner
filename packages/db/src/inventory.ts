@@ -1,6 +1,6 @@
-import { PutCommand, DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import type { InventoryItem, SetInventoryInput, DynamoDBRecord } from "@meal-planner/types";
-import { getDocClient, TABLE_NAME, GSI1_NAME } from "./client.js";
+import { getDocClient, TABLE_NAME, GSI1_NAME, queryAll } from "./client.js";
 
 type InventoryRecord = DynamoDBRecord & InventoryItem;
 
@@ -44,26 +44,22 @@ export async function removeInventoryStatus(name: string): Promise<boolean> {
 }
 
 export async function listInventory(): Promise<InventoryItem[]> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: "PK = :pk",
-      ExpressionAttributeValues: { ":pk": "INVENTORY#default" },
-    }),
-  );
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "PK = :pk",
+    ExpressionAttributeValues: { ":pk": "INVENTORY#default" },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as InventoryRecord));
+  return items.map((item) => fromRecord(item as InventoryRecord));
 }
 
 export async function getItemsByStatus(status: string): Promise<InventoryItem[]> {
-  const result = await getDocClient().send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      IndexName: GSI1_NAME,
-      KeyConditionExpression: "GSI1PK = :pk",
-      ExpressionAttributeValues: { ":pk": `INVENTORY#STATUS#${status}` },
-    }),
-  );
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    IndexName: GSI1_NAME,
+    KeyConditionExpression: "GSI1PK = :pk",
+    ExpressionAttributeValues: { ":pk": `INVENTORY#STATUS#${status}` },
+  });
 
-  return (result.Items ?? []).map((item) => fromRecord(item as InventoryRecord));
+  return items.map((item) => fromRecord(item as InventoryRecord));
 }

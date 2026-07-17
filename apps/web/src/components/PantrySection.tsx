@@ -328,10 +328,7 @@ export function PantrySection() {
   return (
     <div>
       {/* Header with bulk import button */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted">
-          Items you always have on hand. These are excluded from shopping lists.
-        </p>
+      <div className="flex items-center justify-end">
         <button
           onClick={() => setShowBulk(!showBulk)}
           className="flex shrink-0 items-center gap-2 rounded-lg border border-card-border px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-card hover:text-foreground"

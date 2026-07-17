@@ -1,21 +1,28 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getRecipe, listDietaryAdaptations, listFamilyMembers } from "@meal-planner/db";
-import { Clock, Users, ExternalLink, Pencil, ArrowLeft, FlaskConical } from "lucide-react";
+import { getRecipe, listDietaryAdaptations, listFamilyMembers, listActiveIngredientSwaps } from "@meal-planner/db";
+import { namesMatchExact } from "@meal-planner/import";
+import { Clock, Users, ExternalLink, Pencil, ArrowLeft, FlaskConical, ArrowRightLeft, ChefHat } from "lucide-react";
 import { IngredientActions } from "@/components/IngredientActions";
-import type { DietaryAdaptation, FamilyMember, Ingredient } from "@meal-planner/types";
+import { RecipeStepsToggle } from "@/components/RecipeStepsToggle";
+import { DeleteRecipeButton } from "@/components/DeleteRecipeButton";
+import { RecipeImageUpload } from "@/components/RecipeImageUpload";
+import { RecipeEnhanceButton } from "@/components/RecipeEnhanceButton";
+import { RecipeFixButton } from "@/components/RecipeFixButton";
+import type { DietaryAdaptation, FamilyMember, IngredientSection, IngredientSwap } from "@meal-planner/types";
 
 function findMatchingSwaps(
-  ingredients: Ingredient[],
+  ingredientSections: IngredientSection[],
   adaptation: DietaryAdaptation,
   member: FamilyMember | undefined,
 ) {
+  const allIngredients = ingredientSections.flatMap((s) => s.items);
   const matches: { ingredient: string; rule: { from: string; to: string; quality: "exact" | "approximate"; condition?: string } }[] = [];
-  for (const ing of ingredients) {
-    const ingName = ing.name.toLowerCase();
+  for (const ing of allIngredients) {
     for (const rule of adaptation.rules) {
-      const ruleName = rule.from.toLowerCase();
-      if (ingName.includes(ruleName) || ruleName.includes(ingName)) {
+      // These are presented as swaps that apply to the recipe, so require an
+      // exact token-set match rather than loose substring containment.
+      if (namesMatchExact(ing.name, rule.from)) {
         matches.push({ ingredient: ing.name, rule });
       }
     }
@@ -26,16 +33,38 @@ function findMatchingSwaps(
   return { memberName: member?.name ?? "Unknown", adaptationName: adaptation.name, matches, exact, approximate };
 }
 
+function findIngredientSwapMatches(
+  ingredientSections: IngredientSection[],
+  swaps: IngredientSwap[],
+) {
+  const matches: { ingredient: string; swapTo: string; reason?: string }[] = [];
+  for (const section of ingredientSections) {
+    for (const item of section.items) {
+      for (const swap of swaps) {
+        // This claims the ingredient "will be replaced on the grocery list", so
+        // it must mirror the destructive import-time rename: exact token-set
+        // match only (via the shared matcher used by applySwaps).
+        if (namesMatchExact(item.name, swap.from)) {
+          matches.push({ ingredient: item.name, swapTo: swap.to, reason: swap.reason });
+          break;
+        }
+      }
+    }
+  }
+  return matches;
+}
+
 export default async function RecipeDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [recipe, adaptations, members] = await Promise.all([
+  const [recipe, adaptations, members, activeSwaps] = await Promise.all([
     getRecipe(id),
     listDietaryAdaptations(),
     listFamilyMembers(),
+    listActiveIngredientSwaps(),
   ]);
 
   if (!recipe) {
@@ -45,8 +74,10 @@ export default async function RecipeDetailPage({
   const memberMap = new Map(members.map((m) => [m.id, m]));
   const adaptationNotes = adaptations
     .filter((a) => a.isActive)
-    .map((a) => findMatchingSwaps(recipe.ingredients, a, memberMap.get(a.memberId)))
+    .map((a) => findMatchingSwaps(recipe.ingredientSections, a, memberMap.get(a.memberId)))
     .filter(Boolean);
+
+  const swapMatches = findIngredientSwapMatches(recipe.ingredientSections, activeSwaps);
 
   return (
     <div>
@@ -58,27 +89,41 @@ export default async function RecipeDetailPage({
       </Link>
 
       <div className="rounded-xl border border-card-border bg-card p-8 shadow-sm">
+        <RecipeImageUpload recipeId={recipe.id} imageUrl={recipe.imageUrl} />
+
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">{recipe.name}</h1>
             <p className="mt-2 text-muted leading-relaxed">{recipe.description}</p>
           </div>
-          <Link
-            href={`/recipes/${recipe.id}/edit`}
-            className="flex items-center gap-1.5 rounded-lg border border-card-border px-3 py-1.5 text-sm text-muted transition-colors hover:bg-tag-bg hover:text-foreground"
-          >
-            <Pencil className="h-3.5 w-3.5" /> Edit
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/cook/${recipe.id}`}
+              className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+            >
+              <ChefHat className="h-3.5 w-3.5" /> Cook
+            </Link>
+            <RecipeFixButton recipeId={recipe.id} />
+            <RecipeEnhanceButton recipeId={recipe.id} />
+            <Link
+              href={`/recipes/${recipe.id}/edit`}
+              className="flex items-center gap-1.5 rounded-lg border border-card-border px-3 py-1.5 text-sm text-muted transition-colors hover:bg-tag-bg hover:text-foreground"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Edit
+            </Link>
+            <DeleteRecipeButton recipeId={recipe.id} />
+          </div>
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-5 text-sm text-muted">
           <span className="flex items-center gap-1.5">
             <Clock className="h-4 w-4" />
             Prep: {recipe.prepTime}m | Cook: {recipe.cookTime}m
+            {recipe.inactiveTime ? ` | Rest: ${recipe.inactiveTime}m` : ""}
           </span>
           <span className="flex items-center gap-1.5">
             <Users className="h-4 w-4" />
-            {recipe.servings} servings
+            {recipe.yieldDescription || `${recipe.servings} servings`}
           </span>
           {recipe.sourceUrl && (
             <a
@@ -142,26 +187,84 @@ export default async function RecipeDetailPage({
           </div>
         )}
 
+        {/* Auto swap matches */}
+        {swapMatches.length > 0 && (
+          <div className="mt-6">
+            <div className="flex items-start gap-2.5 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 text-sm">
+              <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+              <div>
+                <span className="font-medium text-foreground">Auto swaps:</span>{" "}
+                <span className="text-muted">
+                  {swapMatches.length} ingredient{swapMatches.length !== 1 ? "s" : ""} will be replaced on the grocery list
+                </span>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {swapMatches.map((m) => (
+                    <span
+                      key={m.ingredient}
+                      className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500"
+                      title={m.reason ?? undefined}
+                    >
+                      {m.ingredient} → {m.swapTo}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        {recipe.notes && recipe.notes.length > 0 && (
+          <div className="mt-6 space-y-1.5">
+            {recipe.notes.map((note, i) => (
+              <p key={i} className="text-sm text-muted italic">
+                {note}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* Equipment */}
+        {recipe.equipment && recipe.equipment.length > 0 && (
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted">Equipment:</span>
+            {recipe.equipment.map((item) => (
+              <span
+                key={item}
+                className="rounded-full bg-tag-bg px-3 py-1 text-xs font-medium text-tag-text"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="mt-10 grid gap-10 lg:grid-cols-2">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Ingredients</h2>
-            <IngredientActions ingredients={recipe.ingredients} />
+            <IngredientActions ingredientSections={recipe.ingredientSections} />
           </div>
 
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Steps</h2>
-            <ol className="mt-4 space-y-4">
-              {recipe.steps.map((step, i) => (
-                <li key={i} className="flex gap-3 text-sm">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-tag-bg text-xs font-semibold text-tag-text">
-                    {i + 1}
-                  </span>
-                  <span className="text-muted leading-relaxed">{step}</span>
-                </li>
-              ))}
-            </ol>
+            <RecipeStepsToggle
+              stepSections={recipe.stepSections}
+              enrichedStepSections={recipe.enrichedStepSections}
+              ingredientSections={recipe.ingredientSections}
+            />
           </div>
         </div>
+
+        {/* Storage info */}
+        {recipe.storage && (recipe.storage.makeAhead || recipe.storage.refrigerate || recipe.storage.freeze) && (
+          <div className="mt-8 rounded-lg border border-card-border bg-tag-bg/30 p-4">
+            <h3 className="text-sm font-semibold text-foreground">Storage</h3>
+            <div className="mt-2 space-y-1 text-sm text-muted">
+              {recipe.storage.makeAhead && <p><span className="font-medium text-foreground">Make ahead:</span> {recipe.storage.makeAhead}</p>}
+              {recipe.storage.refrigerate && <p><span className="font-medium text-foreground">Refrigerate:</span> {recipe.storage.refrigerate}</p>}
+              {recipe.storage.freeze && <p><span className="font-medium text-foreground">Freeze:</span> {recipe.storage.freeze}</p>}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -16,6 +16,21 @@ export interface UrlExtractionResult {
 }
 
 /**
+ * Thrown when the upstream site responds with a non-2xx HTTP status (403/404/…).
+ * The message is prefixed `HTTP <status>` so callers that only receive the
+ * message string (across the package barrel) can still identify it and map it to
+ * the friendly `fetch_failed` response instead of a generic 500.
+ */
+export class HttpStatusError extends Error {
+  readonly status: number;
+  constructor(status: number, statusText: string) {
+    super(`HTTP ${status}: ${statusText}`);
+    this.name = "HttpStatusError";
+    this.status = status;
+  }
+}
+
+/**
  * Fetch a URL with a browser-like user agent and timeout.
  */
 async function fetchPage(url: string): Promise<string> {
@@ -35,7 +50,7 @@ async function fetchPage(url: string): Promise<string> {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      throw new HttpStatusError(response.status, response.statusText);
     }
 
     return await response.text();
@@ -94,8 +109,8 @@ export async function extractRecipeFromUrl(
   const fallbackRecipe: CreateRecipeInput = {
     name: "",
     description: "",
-    ingredients: [],
-    steps: [],
+    ingredientSections: [{ items: [] }],
+    stepSections: [{ steps: [] }],
     cookTime: 0,
     prepTime: 0,
     servings: 4,

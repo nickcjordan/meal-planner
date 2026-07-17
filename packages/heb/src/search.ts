@@ -32,6 +32,9 @@ const PRODUCT_SEARCH_QUERY = `query productSearchItems(
             SKUs {
               id
               customerFriendlySize
+              storeLocation {
+                location
+              }
               contextPrices {
                 context
                 isOnSale
@@ -69,6 +72,7 @@ export interface HebRawProduct {
   SKUs: Array<{
     id: string;
     customerFriendlySize: string;
+    storeLocation?: { location?: string };
     contextPrices: Array<{
       context: string;
       isOnSale: boolean;

@@ -3,6 +3,15 @@ export interface Message {
   content: string;
 }
 
+export interface ToolActivity {
+  toolName: string;
+  toolUseId?: string;
+  label: string;
+  startedAt: number;
+  durationMs?: number;
+  isError?: boolean;
+}
+
 const TOOL_LABELS: Record<string, string> = {
   search_recipes: "Searching recipes...",
   get_recipe_details: "Reading recipe details...",
@@ -15,9 +24,11 @@ const TOOL_LABELS: Record<string, string> = {
   get_last_week_shopping_list: "Checking last week's shopping list...",
   save_meal_plan: "Saving your meal plan...",
   present_meal_plan: "Preparing meal plan...",
+  present_alternatives: "Finding alternatives...",
   save_feedback: "Recording feedback...",
   get_session_feedback: "Checking feedback...",
   add_pantry_item: "Adding pantry item...",
+  update_pantry_item: "Updating pantry item...",
   remove_pantry_item: "Removing pantry item...",
   create_recipe: "Creating recipe...",
   update_recipe: "Updating recipe...",
@@ -56,6 +67,7 @@ function stripMcpPrefix(toolName: string): string {
 /** Tools that write to DynamoDB — used for audit trail toasts */
 const WRITE_TOOLS = new Set([
   "add_pantry_item",
+  "update_pantry_item",
   "remove_pantry_item",
   "set_inventory_status",
   "clear_inventory_status",
@@ -74,6 +86,8 @@ const WRITE_TOOLS = new Set([
   "update_session_status",
   "save_meal_plan",
   "import_recipe_from_url",
+  "manage_side",
+  "manage_ingredient_swap",
 ]);
 
 export function isWriteTool(toolName: string): boolean {

@@ -16,9 +16,15 @@ export default function EditRecipePage() {
     fetch(`/api/recipes/${params.id}`)
       .then((r) => r.json())
       .then((data) => {
-        setRecipe(data);
-        setLoading(false);
-      });
+        // A 404 returns `{ error }`; only treat a real recipe as loaded so the
+        // error object never reaches RecipeForm (which would throw on
+        // recipe.tags.join). See RecipeModal.tsx for the same guard.
+        if (!data.error) setRecipe(data);
+      })
+      .catch(() => {
+        // Network failure — fall through to the "Recipe not found" state.
+      })
+      .finally(() => setLoading(false));
   }, [params.id]);
 
   if (loading) {

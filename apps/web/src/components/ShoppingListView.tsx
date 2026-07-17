@@ -24,10 +24,13 @@ export function ShoppingListView({ sessionId }: { sessionId: string }) {
   const [enriching, setEnriching] = useState(false);
   const [enrichStage, setEnrichStage] = useState("");
   const [enrichResult, setEnrichResult] = useState<HebEnrichmentResult | null>(null);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
   const [hebConnected, setHebConnected] = useState(false);
   const [carryoverExpanded, setCarryoverExpanded] = useState(false);
   const [addItemName, setAddItemName] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest full-list snapshot awaiting persist, so we can flush before actions.
+  const pendingItemsRef = useRef<ShoppingListItem[] | null>(null);
 
   useEffect(() => {
     fetch(`/api/sessions/${sessionId}/shopping`)
@@ -45,23 +48,47 @@ export function ShoppingListView({ sessionId }: { sessionId: string }) {
 
     fetch("/api/heb/status")
       .then((r) => r.json())
-      .then((data) => setHebConnected(!!data.store))
+      .then((data) => setHebConnected(!!data.connected))
       .catch(() => setHebConnected(false));
   }, [sessionId]);
 
-  const persistItems = useCallback(
+  const sendItems = useCallback(
     (items: ShoppingListItem[]) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        fetch(`/api/sessions/${sessionId}/shopping`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items }),
-        });
-      }, 500);
+      return fetch(`/api/sessions/${sessionId}/shopping`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      }).catch((err) => console.error("Failed to save shopping list:", err));
     },
     [sessionId],
   );
+
+  // Single-writer legacy view: keep the debounced full-list PATCH, but stash the
+  // latest snapshot so it can be flushed before actions that read the server list.
+  const persistItems = useCallback(
+    (items: ShoppingListItem[]) => {
+      pendingItemsRef.current = items;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        const pending = pendingItemsRef.current;
+        pendingItemsRef.current = null;
+        if (pending) void sendItems(pending);
+      }, 500);
+    },
+    [sendItems],
+  );
+
+  // Fire (and await) the pending full-list PATCH immediately.
+  const flushPending = useCallback(async () => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const pending = pendingItemsRef.current;
+    pendingItemsRef.current = null;
+    if (pending) await sendItems(pending);
+  }, [sendItems]);
 
   function toggleItem(index: number) {
     if (!list) return;
@@ -129,11 +156,16 @@ export function ShoppingListView({ sessionId }: { sessionId: string }) {
     setEnriching(true);
     setEnrichStage("Checking session...");
     setEnrichResult(null);
+    setEnrichError(null);
+    // Land any pending edits so the enrich re-read reflects them.
+    await flushPending();
+    let sawComplete = false;
     try {
       const res = await fetch(`/api/sessions/${sessionId}/shopping/enrich`, {
         method: "POST",
       });
       if (!res.ok || !res.body) {
+        setEnrichError("Could not start H-E-B enrichment. Please try again.");
         setEnriching(false);
         return;
       }
@@ -176,16 +208,28 @@ export function ShoppingListView({ sessionId }: { sessionId: string }) {
                 );
               }
               break;
+            case "item_error":
+              setEnrichStage(`Trouble with ${event.itemName}: ${event.reason}`);
+              break;
+            case "error":
+              setEnrichError(event.message || "H-E-B enrichment failed. Please try again.");
+              break;
             case "complete":
+              sawComplete = true;
               setList(event.list);
               setEnrichResult(event.result);
               break;
           }
         }
       }
+    } catch {
+      setEnrichError("H-E-B enrichment was interrupted. Please try again.");
     } finally {
       setEnriching(false);
       setEnrichStage("");
+      if (!sawComplete) {
+        setEnrichError((prev) => prev ?? "H-E-B enrichment ended unexpectedly. Please try again.");
+      }
     }
   }
 
@@ -343,6 +387,13 @@ export function ShoppingListView({ sessionId }: { sessionId: string }) {
             {enrichResult.sessionExpired && (
               <span className="ml-1 text-amber-500">Session expired — try again.</span>
             )}
+          </div>
+        )}
+
+        {enrichError && !enriching && (
+          <div className="mt-3 flex items-center gap-1.5 text-xs text-red-500">
+            <X className="h-3.5 w-3.5 shrink-0" />
+            {enrichError}
           </div>
         )}
       </div>
