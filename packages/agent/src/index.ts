@@ -18,6 +18,15 @@ export type {
   MealAlternativesPayload,
 } from "./session.js";
 
+export type {
+  MealOptionsPayload,
+  OptionAnnotation,
+  PlanDraftPayload,
+  DraftMealProposal,
+  DraftSideSuggestion,
+  WeekRoundoutPayload,
+} from "./tools.js";
+
 export { runAssistantTurn } from "./assistant.js";
 export type { AssistantStreamEvent } from "./assistant.js";
 

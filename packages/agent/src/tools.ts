@@ -1577,6 +1577,225 @@ export const manageIngredientSwapTool = tool(
   },
 );
 
+// --- Wizard present tools (collaborative planning wizard, mode: "wizard") ---
+//
+// These three no-op present tools mirror present_meal_plan: each handler returns
+// a short static string, and packages/agent/session.ts intercepts the tool call
+// to forward its input as a StreamEvent. The inferred payload types below are
+// re-exported from the package index and consumed by the wizard UI.
+//
+// Shapes are FROZEN per scratchpad/phase1-shared-contracts.md §4. These are
+// ADDITIVE — the legacy present_meal_plan / present_alternatives tools are
+// unchanged. Note that unlike the legacy present_meal_plan suggestion enum,
+// the roundout suggestion enum below intentionally includes "pantry-promotion".
+
+const wizardIngredientSchema = z.object({
+  name: z.string(),
+  quantity: z.number(),
+  unit: z.string(),
+  category: z.string().optional(),
+});
+
+// -- present_meal_options (PHASE:OPTIONS) --
+
+const optionAnnotationSchema = z.object({
+  recipeId: z.string().describe("Recipe ID from the current grid this note is layered onto"),
+  note: z.string().describe("One-line why/insight for this card — history, variety, deals, family fit"),
+});
+
+const mealOptionsShape = {
+  annotations: z
+    .array(optionAnnotationSchema)
+    .optional()
+    .describe("AI notes layered onto the existing grid, one per recipe card"),
+  reorderedRecipeIds: z
+    .array(z.string())
+    .optional()
+    .describe("Full replacement ranking — include ONLY when the user asked to re-rank or filter the grid"),
+  addOptions: z
+    .array(
+      z.object({
+        recipeId: z.string(),
+        recipeName: z.string(),
+        complexity: z.string(),
+        reasoning: z.string(),
+      }),
+    )
+    .optional()
+    .describe("Recipes outside the current grid to surface. Must never contain a restricted ingredient. Only real recipe IDs."),
+  message: z.string().optional().describe("One-liner for the chat bubble"),
+};
+export const mealOptionsPayloadSchema = z.object(mealOptionsShape);
+
+export type OptionAnnotation = z.infer<typeof optionAnnotationSchema>;
+export type MealOptionsPayload = z.infer<typeof mealOptionsPayloadSchema>;
+
+export const presentMealOptions = tool(
+  "present_meal_options",
+  "PHASE:OPTIONS — refine the recipe options grid. Use this to annotate cards with one-line insights, re-rank the grid (reorderedRecipeIds), and/or surface additional library recipes (addOptions). Respond to every PHASE:OPTIONS message with this tool, never markdown. Never surface a recipe containing a restricted ingredient.",
+  mealOptionsShape,
+  async () => {
+    return { content: [{ type: "text" as const, text: "Meal options presented to user." }] };
+  },
+);
+
+// -- present_plan_draft (PHASE:DRAFT) --
+
+const wizardAdaptationSchema = z.object({
+  adaptationName: z.string().describe("e.g. 'Lactose Intolerance'"),
+  memberName: z.string().describe("e.g. 'Nick'"),
+  applied: z.boolean().describe("Whether the adaptation is applied to this meal"),
+  swaps: z
+    .array(
+      z.object({
+        from: z.string(),
+        to: z.string(),
+        quality: z.enum(["exact", "approximate"]),
+      }),
+    )
+    .optional()
+    .describe("Specific swaps being made (when applied=true)"),
+  skipReason: z.string().optional().describe("Why not adapting (when applied=false)"),
+  skipNote: z.string().optional().describe("What to do instead (e.g. 'Take Lactaid pill')"),
+});
+
+const draftSideSuggestionSchema = z.object({
+  sideId: z.string().optional().describe("Side ID from the library (omit for inline sides)"),
+  sideName: z.string().describe("Display name of the side"),
+  sideCategory: z.string().describe("Category: green, starch, grain, bread, legume, salad, or other"),
+  complexity: z.string().describe("Side complexity: effortless, simple, or prepared"),
+  reasoning: z.string().optional().describe("Why this side pairs well with the main"),
+  ingredients: z
+    .array(wizardIngredientSchema)
+    .optional()
+    .describe("Full ingredient list — REQUIRED for inline sides (no sideId), omit for library sides"),
+  baseIngredient: z.string().optional().describe("Base ingredient grouping key (e.g. 'broccoli')"),
+  preAccepted: z
+    .boolean()
+    .describe("Strong pairing → true (starts accepted); weak/optional → false (starts declined)"),
+});
+
+const draftMealProposalSchema = z.object({
+  day: z.string().describe("Proposed day, lowercase (monday..sunday)"),
+  mealType: z.string().describe("Meal type, lowercase (dinner, lunch, breakfast) — defaults to dinner"),
+  recipeId: z.string().describe("Recipe ID from the database — never invent one"),
+  recipeName: z.string(),
+  complexity: z.string().describe("Must match the recipe's actual complexity from the database"),
+  dayReasoning: z.string().describe("One-line reason for the day assignment, e.g. 'Involved recipe → Saturday'"),
+  adaptations: z
+    .array(wizardAdaptationSchema)
+    .optional()
+    .describe("Per-meal dietary adaptation decisions (applied flag = proposed decision)"),
+  suggestedSides: z
+    .array(draftSideSuggestionSchema)
+    .describe("0-2 sides for this meal. Pass an empty array for complete-on-their-own meals."),
+  completenessNote: z
+    .string()
+    .optional()
+    .describe("e.g. 'complete on its own' or 'needs a starch'"),
+});
+
+const planDraftShape = {
+  meals: z
+    .array(draftMealProposalSchema)
+    .describe("Each selected meal scheduled to a day, with sides and adaptations"),
+};
+export const planDraftPayloadSchema = z.object(planDraftShape);
+
+export type DraftSideSuggestion = z.infer<typeof draftSideSuggestionSchema>;
+export type DraftMealProposal = z.infer<typeof draftMealProposalSchema>;
+export type PlanDraftPayload = z.infer<typeof planDraftPayloadSchema>;
+
+export const presentPlanDraft = tool(
+  "present_plan_draft",
+  "PHASE:DRAFT — schedule the user's selected meals. Assign each a day with a one-line dayReasoning (involved → weekend/lighter days, no same-protein back-to-back, balance cook time), propose 0-2 sides per meal (preAccepted for strong pairings), and record per-meal dietary adaptation decisions. Respond to every PHASE:DRAFT message with this tool, never markdown.",
+  planDraftShape,
+  async () => {
+    return { content: [{ type: "text" as const, text: "Plan draft presented to user." }] };
+  },
+);
+
+// -- present_week_roundout (PHASE:ROUNDOUT) --
+
+const wizardStapleSchema = z.object({
+  name: z.string(),
+  style: z.enum(["specific", "flexible"]),
+  category: z.string(),
+  quantity: z.number().optional(),
+  unit: z.string().optional(),
+  description: z.string().optional(),
+  frequency: z.enum(["weekly", "biweekly", "monthly", "as-needed"]),
+});
+
+const wizardCarryoverSchema = z.object({
+  name: z.string(),
+  estimatedQuantity: z.number(),
+  unit: z.string(),
+  source: z.object({
+    weekOf: z.string(),
+    recipeName: z.string(),
+    purchasedQuantity: z.number(),
+    usedQuantity: z.number(),
+  }),
+  neededFor: z.object({
+    day: z.string(),
+    recipeName: z.string(),
+    requiredQuantity: z.number(),
+  }),
+  status: z.enum(["confirmed", "need"]).optional().describe("Resolution is done in the UI — usually omit"),
+});
+
+const wizardSuggestionSchema = z.object({
+  id: z.string(),
+  // Unlike the legacy present_meal_plan suggestion enum, this one includes
+  // "pantry-promotion" (contract §4 requires it).
+  type: z.enum([
+    "deal-meal",
+    "recurring-item",
+    "pattern-detected",
+    "smart-promotion",
+    "pantry-promotion",
+  ]),
+  title: z.string(),
+  description: z.string(),
+  rationale: z.string(),
+  item: wizardStapleSchema.optional().describe("For item-type suggestions, the staple item details"),
+});
+
+const wizardExtraSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  ingredients: z.array(wizardIngredientSchema),
+});
+
+const weekRoundoutShape = {
+  groceryStaples: z
+    .array(wizardStapleSchema)
+    .describe("Deterministic staples-due list, included AS-IS. Flexible staples pass through untouched — never expand them into products."),
+  carryoverItems: z
+    .array(wizardCarryoverSchema)
+    .describe("Leftover ingredients from a prior week that this week's meals need. Every assumption must be visible."),
+  suggestions: z
+    .array(wizardSuggestionSchema)
+    .describe("Non-plan recommendations: recurring-item, pattern-detected, smart-promotion, pantry-promotion, deal-meal"),
+  extras: z
+    .array(wizardExtraSchema)
+    .optional()
+    .describe("Only when the user asked for extras via chat"),
+};
+export const weekRoundoutPayloadSchema = z.object(weekRoundoutShape);
+
+export type WeekRoundoutPayload = z.infer<typeof weekRoundoutPayloadSchema>;
+
+export const presentWeekRoundout = tool(
+  "present_week_roundout",
+  "PHASE:ROUNDOUT — round out the shopping list. Pass the deterministic staples-due list through as-is in groceryStaples, add analyzed carryoverItems, and surface non-plan suggestions (deal-meal / recurring-item / pattern-detected / smart-promotion / pantry-promotion). Include extras only when the user asked. Respond to every PHASE:ROUNDOUT message with this tool, never markdown.",
+  weekRoundoutShape,
+  async () => {
+    return { content: [{ type: "text" as const, text: "Week roundout presented to user." }] };
+  },
+);
+
 export const allTools = [
   // Read tools — planning
   getPlanningCandidatesTool,
@@ -1637,4 +1856,8 @@ export const allTools = [
   manageSideTool,
   getSidePairingsTool,
   getInlineSideFrequenciesTool,
+  // Wizard present tools (mode: "wizard")
+  presentMealOptions,
+  presentPlanDraft,
+  presentWeekRoundout,
 ];

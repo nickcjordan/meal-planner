@@ -20,11 +20,20 @@ export type PlannedSide =
       sideCategory?: import("./side.js").SideCategory;
     };
 
+/** A per-meal decision about whether a named dietary adaptation is applied to
+ *  that meal's ingredients. Absent `adaptations` on a meal means "apply all
+ *  active adaptations" (the historical global behavior). */
+export interface MealAdaptationDecision {
+  adaptationName: string;
+  applied: boolean;
+}
+
 export interface PlannedMeal {
   day: DayOfWeek;
   mealType: MealType;
   recipeId: string;
   sides?: PlannedSide[];
+  adaptations?: MealAdaptationDecision[];
   cookedAt?: string;
 }
 

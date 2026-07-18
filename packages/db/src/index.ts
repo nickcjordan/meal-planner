@@ -102,12 +102,22 @@ export {
   listActiveIngredientSwaps,
 } from "./swaps.js";
 
-export { getPlanningCandidates } from "./planning.js";
+export {
+  getPlanningCandidates,
+  getPlanningOptions,
+  ingredientMatchesRestriction,
+  recipeHasRestricted,
+} from "./planning.js";
 export type {
   PlanningCandidate,
   PlanningContext,
   PlanningCandidatesResult,
+  MealOption,
+  PlanningOptionsResult,
 } from "./planning.js";
+
+export { getStaplesDue, computeStaplesDue } from "./staples-due.js";
+export type { StaplesDueResult } from "./staples-due.js";
 
 export {
   createSide,

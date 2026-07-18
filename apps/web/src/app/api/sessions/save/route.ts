@@ -3,6 +3,7 @@ import { getSessionByWeek, createSession, updateSession } from "@meal-planner/db
 import type {
   DayOfWeek,
   MealType,
+  MealAdaptationDecision,
   PlannedMeal,
   PlannedSide,
   PlanExtra,
@@ -18,6 +19,7 @@ interface SaveRequestBody {
     mealType: string;
     recipeId: string;
     sides?: PlannedSide[];
+    adaptations?: MealAdaptationDecision[];
     cookedAt?: string;
   }>;
   extras?: PlanExtra[];
@@ -38,6 +40,7 @@ export async function POST(request: Request) {
       mealType: m.mealType as MealType,
       recipeId: m.recipeId,
       ...(m.sides !== undefined ? { sides: m.sides } : {}),
+      ...(m.adaptations !== undefined ? { adaptations: m.adaptations } : {}),
       ...(m.cookedAt !== undefined ? { cookedAt: m.cookedAt } : {}),
     }));
 

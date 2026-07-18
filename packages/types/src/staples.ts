@@ -56,17 +56,6 @@ export interface CarryoverItem {
   status: "unresolved" | "confirmed" | "need";
 }
 
-/** A suggestion surfaced to the user during planning (not yet in the plan) */
-export interface PlanSuggestion {
-  id: string;
-  type: "deal-meal" | "recurring-item" | "pattern-detected" | "smart-promotion";
-  title: string;
-  description: string;
-  rationale: string;
-  /** For item-type suggestions */
-  item?: SessionStapleItem;
-}
-
 /** Purchase frequency data derived from historical shopping lists */
 export interface PurchasePattern {
   itemName: string;

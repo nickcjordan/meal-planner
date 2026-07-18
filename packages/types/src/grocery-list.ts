@@ -18,6 +18,13 @@ export type GroceryItemSource =
       sessionId?: string;
       weekOf?: string;
       quantity?: number;
+      /** Provenance of the source this adaptation replaced, so adapted items keep
+       *  their meal/side tags in the rail. Populated by the grocery builder from
+       *  the recipe or side source that was substituted. */
+      originRecipeId?: string;
+      originRecipeName?: string;
+      originSideName?: string;
+      originDay?: string;
     }
   | { type: "carryover"; sessionId: string; weekOf: string; recipeName: string; quantity?: number }
   | {

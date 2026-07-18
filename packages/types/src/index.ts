@@ -17,6 +17,7 @@ export type {
   MealType,
   DayOfWeek,
   PlannedSide,
+  MealAdaptationDecision,
   PlannedMeal,
   PlanExtra,
   SessionStatus,
@@ -52,7 +53,6 @@ export type {
   CreateGroceryStapleInput,
   SessionStapleItem,
   CarryoverItem,
-  PlanSuggestion,
   PurchasePattern,
 } from "./staples.js";
 

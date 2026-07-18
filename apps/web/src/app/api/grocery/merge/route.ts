@@ -8,31 +8,26 @@ import {
   saveShoppingList,
   listDietaryAdaptations,
   listFamilyMembers,
+  listPreferences,
   getSidesBatch,
 } from "@meal-planner/db";
-import type { GroceryList, GroceryListItem, GroceryItemSource, Ingredient, DietaryAdaptation, FamilyMember, ShoppingListItem } from "@meal-planner/types";
-import { filterPantryItems } from "@/lib/pantry-match";
-import { namesMatchExact } from "@meal-planner/import";
+import type {
+  GroceryList,
+  GroceryListItem,
+  GroceryItemSource,
+  ShoppingListItem,
+} from "@meal-planner/types";
+import {
+  assembleGroceryContext,
+  buildGroceryItems,
+  compareGroceryItems,
+  type BuildGroceryInput,
+} from "@/lib/grocery-builder";
 import { randomUUID } from "crypto";
-
-interface ConsolidatedItem {
-  name: string;
-  quantity: number;
-  unit: string;
-  category: string;
-  sources: GroceryItemSource[];
-  isFlexible?: boolean;
-  flexibleDescription?: string;
-}
 
 /** Read the (optional) sessionId off any source variant that carries one. */
 function sourceSessionId(s: GroceryItemSource): string | undefined {
   return "sessionId" in s ? s.sessionId : undefined;
-}
-
-/** Read the (optional) weekOf off any source variant that carries one. */
-function sourceWeekOf(s: GroceryItemSource): string | undefined {
-  return "weekOf" in s ? s.weekOf : undefined;
 }
 
 /** Read the (optional) per-source contributed quantity off any source variant. */
@@ -131,83 +126,6 @@ function resyncSession(list: GroceryList, sessionId: string): Map<string, number
   return checkedPreResyncQty;
 }
 
-/**
- * Apply dietary adaptation substitutions to ingredients.
- * For each ingredient, check if any active adaptation has a matching rule.
- * Only apply "exact" swaps when leniency is "when-easy".
- * Apply all swaps when leniency is "always".
- * Skip all swaps when leniency is "gentle-reminder".
- */
-function applyAdaptations(
-  items: { ingredient: Ingredient; source: GroceryItemSource }[],
-  adaptations: DietaryAdaptation[],
-  memberMap: Map<string, FamilyMember>,
-): { ingredient: Ingredient; source: GroceryItemSource }[] {
-  const active = adaptations.filter((a) => a.isActive);
-  if (active.length === 0) return items;
-
-  return items.map(({ ingredient, source }) => {
-    for (const adaptation of active) {
-      if (adaptation.leniency === "gentle-reminder") continue;
-
-      for (const rule of adaptation.rules) {
-        // Adaptation substitution is destructive (it renames the ingredient), so
-        // require exact token-set equality rather than a bidirectional substring.
-        if (!namesMatchExact(rule.from, ingredient.name)) continue;
-
-        // For "when-easy", only apply exact swaps
-        if (adaptation.leniency === "when-easy" && rule.quality !== "exact") continue;
-
-        const member = memberMap.get(adaptation.memberId);
-        return {
-          ingredient: { ...ingredient, name: rule.to },
-          source: {
-            type: "adaptation" as const,
-            originalIngredient: ingredient.name,
-            adaptationName: adaptation.name,
-            memberName: member?.name ?? "Unknown",
-            // Carry session provenance + contributed quantity from the source we
-            // replaced, so a re-merge can resync this line exactly.
-            sessionId: sourceSessionId(source),
-            weekOf: sourceWeekOf(source),
-            quantity: ingredient.quantity,
-          },
-        };
-      }
-    }
-
-    return { ingredient, source };
-  });
-}
-
-function consolidateSessionIngredients(
-  allIngredients: { ingredient: Ingredient; source: GroceryItemSource }[],
-): ConsolidatedItem[] {
-  const map = new Map<string, ConsolidatedItem>();
-
-  for (const { ingredient, source } of allIngredients) {
-    const name = ingredient.name.toLowerCase().trim();
-    const unit = ingredient.unit.toLowerCase().trim();
-    const key = `${name}||${unit}`;
-
-    const existing = map.get(key);
-    if (existing) {
-      existing.quantity += ingredient.quantity;
-      existing.sources.push(source);
-    } else {
-      map.set(key, {
-        name,
-        quantity: ingredient.quantity,
-        unit: ingredient.unit,
-        category: ingredient.category ?? "other",
-        sources: [source],
-      });
-    }
-  }
-
-  return Array.from(map.values());
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -215,7 +133,6 @@ export async function POST(request: Request) {
       sessionId: string;
       excludedIngredients?: string[];
     };
-    const excludedSet = new Set(excludedKeys);
 
     if (!sessionId) {
       return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
@@ -237,190 +154,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    // Fetch all recipes
-    const recipeIds = [...new Set(session.meals.map((m) => m.recipeId))];
-    const recipes = await Promise.all(recipeIds.map((rid) => getRecipe(rid)));
-    const recipeMap = new Map(recipes.filter(Boolean).map((r) => [r!.id, r!]));
-
-    // Collect all ingredients with source provenance
-    const allIngredients: { ingredient: Ingredient; source: GroceryItemSource }[] = [];
-
-    for (const meal of session.meals) {
-      const recipe = recipeMap.get(meal.recipeId);
-      if (!recipe) continue;
-      for (const section of recipe.ingredientSections) {
-        for (const ing of section.items) {
-          allIngredients.push({
-            ingredient: ing,
-            source: {
-              type: "recipe",
-              sessionId,
-              weekOf: session.weekOf,
-              recipeId: recipe.id,
-              recipeName: recipe.name,
-              quantity: ing.quantity,
-            },
-          });
-        }
-      }
-    }
-
-    // Include extras
-    if (session.extras) {
-      for (const extra of session.extras) {
-        for (const ing of extra.ingredients) {
-          allIngredients.push({
-            ingredient: { name: ing.name, quantity: ing.quantity, unit: ing.unit, category: ing.category },
-            source: {
-              type: "extra",
-              sessionId,
-              weekOf: session.weekOf,
-              extraName: extra.name,
-              quantity: ing.quantity,
-            },
-          });
-        }
-      }
-    }
-
-    // Include side ingredients
-    const sideRefIds = new Set<string>();
-    for (const meal of session.meals) {
-      for (const side of meal.sides ?? []) {
-        if (side.kind === "ref") sideRefIds.add(side.sideId);
-      }
-    }
-    const sideBatch = sideRefIds.size > 0 ? await getSidesBatch([...sideRefIds]) : new Map();
-
-    for (const meal of session.meals) {
-      for (const side of meal.sides ?? []) {
-        const ingredients =
-          side.kind === "ref"
-            ? (sideBatch.get(side.sideId)?.ingredients ?? [])
-            : side.ingredients;
-        const sideName =
-          side.kind === "ref"
-            ? (sideBatch.get(side.sideId)?.name ?? side.sideId)
-            : side.name;
-
-        for (const ing of ingredients) {
-          allIngredients.push({
-            ingredient: { name: ing.name, quantity: ing.quantity, unit: ing.unit, category: ing.category },
-            source: {
-              type: "side",
-              sessionId,
-              weekOf: session.weekOf,
-              day: meal.day,
-              mealType: meal.mealType,
-              sideId: side.kind === "ref" ? side.sideId : undefined,
-              sideName,
-              quantity: ing.quantity,
-            },
-          });
-        }
-      }
-    }
-
-    // Filter out user-excluded ingredients (from the ingredient review panel)
-    const includedIngredients = excludedSet.size > 0
-      ? allIngredients.filter(({ ingredient, source }) => {
-          if (source.type === "recipe" && "recipeId" in source) {
-            const key = `recipe:${source.recipeId}:${ingredient.name.toLowerCase().trim()}`;
-            return !excludedSet.has(key);
-          }
-          if (source.type === "extra" && "extraName" in source) {
-            const key = `extra:${source.extraName}:${ingredient.name.toLowerCase().trim()}`;
-            return !excludedSet.has(key);
-          }
-          return true;
-        })
-      : allIngredients;
-
-    // Apply dietary adaptations (swap ingredients based on active profiles)
-    const [adaptations, familyMembers] = await Promise.all([
-      listDietaryAdaptations(),
-      listFamilyMembers(),
-    ]);
-    const memberMap = new Map(familyMembers.map((m) => [m.id, m]));
-    const adapted = applyAdaptations(includedIngredients, adaptations, memberMap);
-
-    // Consolidate session items
-    const consolidated = consolidateSessionIngredients(adapted);
-
-    // Filter pantry items (fuzzy match using normalizedName + aliases)
-    const pantryItems = await listPantryItems();
-    const filtered = filterPantryItems(consolidated, pantryItems);
-
-    // Add grocery staples from the session
-    if (session.groceryStaples) {
-      for (const staple of session.groceryStaples) {
-        const name = staple.name.toLowerCase().trim();
-        const existing = filtered.find((item) => item.name === name);
-        if (existing) continue; // Already covered by a recipe ingredient
-
-        filtered.push({
-          name,
-          quantity: staple.quantity ?? 0,
-          unit: staple.unit ?? "",
-          category: staple.category,
-          sources: [{
-            type: "staple",
-            stapleName: staple.name,
-            sessionId,
-            weekOf: session.weekOf,
-            quantity: staple.quantity ?? 0,
-          }],
-          isFlexible: staple.style === "flexible",
-          flexibleDescription: staple.description,
-        });
-      }
-    }
-
-    // Add carryover items the user marked as "I need this"
-    if (session.carryoverItems) {
-      // Build a lookup from ingredient name → category using the already-collected recipe ingredients
-      const ingredientCategoryMap = new Map<string, string>();
-      for (const { ingredient } of allIngredients) {
-        if (ingredient.category) {
-          ingredientCategoryMap.set(ingredient.name.toLowerCase().trim(), ingredient.category);
-        }
-      }
-
-      for (const carryover of session.carryoverItems) {
-        if (carryover.status !== "need") continue;
-        const name = carryover.name.toLowerCase().trim();
-        const unit = carryover.unit.toLowerCase().trim();
-        const category = ingredientCategoryMap.get(name) ?? "other";
-        const key = `${name}||${unit}`;
-        const existing = filtered.find(
-          (item) => `${item.name}||${item.unit.toLowerCase().trim()}` === key,
-        );
-        if (existing) {
-          existing.quantity += carryover.neededFor.requiredQuantity;
-          existing.sources.push({
-            type: "carryover",
-            sessionId,
-            weekOf: session.weekOf,
-            recipeName: carryover.neededFor.recipeName,
-            quantity: carryover.neededFor.requiredQuantity,
-          });
-        } else {
-          filtered.push({
-            name,
-            quantity: carryover.neededFor.requiredQuantity,
-            unit: carryover.unit,
-            category,
-            sources: [{
-              type: "carryover",
-              sessionId,
-              weekOf: session.weekOf,
-              recipeName: carryover.neededFor.recipeName,
-              quantity: carryover.neededFor.requiredQuantity,
-            }],
-          });
-        }
-      }
-    }
+    // Construct the session's grocery contribution via the shared builder. The
+    // saved session's meals already carry day/mealType/sides and (optionally)
+    // per-meal adaptation decisions; a meal with no `adaptations` field keeps the
+    // historical global-apply behavior inside the builder.
+    const input: BuildGroceryInput = {
+      sessionId,
+      weekOf: session.weekOf,
+      meals: session.meals,
+      extras: session.extras,
+      groceryStaples: session.groceryStaples,
+      carryoverItems: session.carryoverItems,
+      excludedIngredients: excludedKeys,
+    };
+    const context = await assembleGroceryContext(input, {
+      getRecipe,
+      getSidesBatch,
+      listDietaryAdaptations,
+      listFamilyMembers,
+      listPantryItems,
+      listPreferences,
+    });
+    // `warnings` are defense-in-depth advisories consumed only by the preview
+    // route; the merge route surfaces items, not warnings.
+    const { items: filtered } = buildGroceryItems(input, context);
 
     // Merge into grocery list
     const now = new Date().toISOString();
@@ -459,18 +216,7 @@ export async function POST(request: Request) {
     }
 
     // Sort by category then name
-    const CATEGORY_ORDER = [
-      "produce", "meat", "seafood", "dairy", "bread", "pasta",
-      "canned", "condiments", "spices", "pantry", "frozen", "other",
-    ];
-    list.items.sort((a, b) => {
-      const catA = CATEGORY_ORDER.indexOf(a.category);
-      const catB = CATEGORY_ORDER.indexOf(b.category);
-      const orderA = catA === -1 ? CATEGORY_ORDER.length : catA;
-      const orderB = catB === -1 ? CATEGORY_ORDER.length : catB;
-      if (orderA !== orderB) return orderA - orderB;
-      return a.name.localeCompare(b.name);
-    });
+    list.items.sort(compareGroceryItems);
 
     // Re-check protection: if a still-checked row gained net-new required
     // quantity from this re-merge (final qty > pre-resync qty), uncheck it so it
