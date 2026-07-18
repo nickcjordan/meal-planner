@@ -11,6 +11,8 @@
   --tag-bg: #eff6ff;
   --tag-text: #1d4ed8;
   --input-border: #d1d5db;
+  --input-bg: #ffffff;
+  --placeholder: #9ca3af;
   --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
@@ -29,6 +31,8 @@
     --tag-bg: #1e293b;
     --tag-text: #60a5fa;
     --input-border: #374151;
+    --input-bg: #0f1117;
+    --placeholder: #6b7280;
     --success: #22c55e;
     --warning: #f59e0b;
     --danger: #ef4444;
@@ -47,6 +51,8 @@
   --color-tag-bg: var(--tag-bg);
   --color-tag-text: var(--tag-text);
   --color-input-border: var(--input-border);
+  --color-input-bg: var(--input-bg);
+  --color-placeholder: var(--placeholder);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
@@ -84,4 +90,11 @@ body {
 
 *::-webkit-scrollbar-thumb:hover {
   background: var(--muted);
+}
+
+/* Skeleton shimmer sweep — used by src/components/ui/Skeleton.tsx */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
