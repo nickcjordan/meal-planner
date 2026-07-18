@@ -1,9 +1,9 @@
 import { Skeleton } from "@/components/ui/Skeleton";
 
 export default function ReviewLoading() {
-  // Renders inside the review layout PageContainer.
+  // Renders inside the review layout PageContainer; content is constrained to match the page.
   return (
-    <div>
+    <div className="mx-auto max-w-2xl">
       <Skeleton className="h-4 w-32" />
       <Skeleton className="mt-6 h-8 w-72" />
       <Skeleton className="mt-3 h-4 w-32" />

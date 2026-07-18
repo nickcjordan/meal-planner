@@ -28,7 +28,7 @@ export function StarRating({ value, onChange, readonly = false }: StarRatingProp
           >
             <Star
               className={`h-6 w-6 ${
-                filled ? "fill-amber-400 text-amber-400" : "text-muted"
+                filled ? "fill-warning text-warning" : "text-muted"
               }`}
             />
           </button>

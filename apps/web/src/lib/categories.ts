@@ -29,19 +29,81 @@ export const AISLE_CATEGORY_ORDER = [
   "other",
 ];
 
+/**
+ * Emoji per category. The canonical set (see
+ * packages/import/src/categorize-categories.ts) each gets a distinct icon, and
+ * we also map the common near-synonyms the Claude fallback categorizer or older
+ * data occasionally emit (e.g. "cheese", "condiment", "broth", "grain") so they
+ * don't fall through to the generic 📦. Keys are lowercased category strings.
+ */
 export const CATEGORY_ICONS: Record<string, string> = {
+  // ── Canonical categories ──
   produce: "🥬",
   meat: "🥩",
   seafood: "🐟",
-  dairy: "🧈",
+  dairy: "🧀",
   bread: "🍞",
   pasta: "🍝",
   canned: "🥫",
   condiments: "🫙",
   spices: "🧂",
-  pantry: "🏠",
+  pantry: "🫘",
   frozen: "🧊",
-  other: "📦",
+  other: "🛒",
+
+  // ── Common aliases / fallback-categorizer outputs ──
+  cheese: "🧀",
+  eggs: "🥚",
+  condiment: "🫙",
+  sauce: "🥫",
+  sauces: "🥫",
+  oil: "🫗",
+  oils: "🫗",
+  spice: "🧂",
+  seasoning: "🧂",
+  seasonings: "🧂",
+  herb: "🌿",
+  herbs: "🌿",
+  broth: "🍲",
+  stock: "🍲",
+  soup: "🍲",
+  grain: "🌾",
+  grains: "🌾",
+  rice: "🍚",
+  beans: "🫘",
+  legumes: "🫘",
+  baking: "🧁",
+  bakery: "🥐",
+  breakfast: "🥞",
+  cereal: "🥣",
+  snack: "🍿",
+  snacks: "🍿",
+  nuts: "🥜",
+  dessert: "🍰",
+  desserts: "🍰",
+  sweets: "🍬",
+  candy: "🍬",
+  fruit: "🍎",
+  fruits: "🍎",
+  vegetable: "🥕",
+  vegetables: "🥕",
+  veggies: "🥕",
+  beverage: "🥤",
+  beverages: "🥤",
+  drinks: "🥤",
+  coffee: "☕",
+  tea: "🍵",
+  alcohol: "🍷",
+  wine: "🍷",
+  beer: "🍺",
+  deli: "🥓",
+  poultry: "🍗",
+  household: "🧻",
+  paper: "🧻",
+  cleaning: "🧼",
+  baby: "🍼",
+  pet: "🐾",
+  international: "🌮",
 };
 
 /** Group items by category in display order. Works with any item type that has a `category` field. */

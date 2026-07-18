@@ -282,43 +282,69 @@ export interface RecipeSummary {
   lastCookedAt?: string | null;
 }
 
-/** Query all recipe summaries via GSI2. Returns compact records for planning. */
+let warnedMissingGsi2 = false;
+
+/** Query all recipe summaries via GSI2. Returns compact records for planning.
+ *  Tables created before GSI2 existed fall back to a paginated scan so the app
+ *  keeps working; run `npm run setup:db` to add the index in place. */
 export async function listRecipeSummaries(): Promise<RecipeSummary[]> {
   const summaries: RecipeSummary[] = [];
   let lastKey: Record<string, unknown> | undefined;
 
-  do {
-    const result = await getDocClient().send(
-      new QueryCommand({
-        TableName: TABLE_NAME,
-        IndexName: GSI2_NAME,
-        KeyConditionExpression: "GSI2PK = :pk",
-        ExpressionAttributeValues: { ":pk": "RECIPES" },
-        ...(lastKey ? { ExclusiveStartKey: lastKey } : {}),
-      }),
-    );
-
-    for (const item of result.Items ?? []) {
-      summaries.push({
-        id: (item as Recipe).id,
-        name: (item as Recipe).name,
-        description: (item as Recipe).description,
-        complexity: (item as Recipe).complexity,
-        tags: (item as Recipe).tags,
-        categories: (item as Recipe).categories,
-        primaryProtein: (item as Recipe).primaryProtein,
-        cuisineType: (item as Recipe).cuisineType,
-        ingredientNames: (item as Recipe).ingredientNames,
-        prepTime: (item as Recipe).prepTime,
-        cookTime: (item as Recipe).cookTime,
-        servings: (item as Recipe).servings,
-        avgRating: (item as Recipe).avgRating,
-        lastCookedAt: (item as Recipe).lastCookedAt,
-      });
+  let items: Record<string, unknown>[];
+  try {
+    items = [];
+    do {
+      const result = await getDocClient().send(
+        new QueryCommand({
+          TableName: TABLE_NAME,
+          IndexName: GSI2_NAME,
+          KeyConditionExpression: "GSI2PK = :pk",
+          ExpressionAttributeValues: { ":pk": "RECIPES" },
+          ...(lastKey ? { ExclusiveStartKey: lastKey } : {}),
+        }),
+      );
+      items.push(...(result.Items ?? []));
+      lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (lastKey);
+  } catch (err) {
+    const isMissingIndex =
+      err instanceof Error &&
+      err.name === "ValidationException" &&
+      err.message.includes(GSI2_NAME);
+    if (!isMissingIndex) throw err;
+    if (!warnedMissingGsi2) {
+      warnedMissingGsi2 = true;
+      console.warn(
+        `[db] Table is missing index ${GSI2_NAME}; using scan fallback for recipe summaries. Run "npm run setup:db" to add it.`,
+      );
     }
+    items = await scanAll({
+      TableName: TABLE_NAME,
+      FilterExpression: "entityType = :type",
+      ExpressionAttributeValues: { ":type": "RECIPE" },
+    });
+  }
 
-    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (lastKey);
+  for (const raw of items) {
+    const item = raw as unknown as Recipe;
+    summaries.push({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      complexity: item.complexity,
+      tags: item.tags,
+      categories: item.categories,
+      primaryProtein: item.primaryProtein,
+      cuisineType: item.cuisineType,
+      ingredientNames: item.ingredientNames,
+      prepTime: item.prepTime,
+      cookTime: item.cookTime,
+      servings: item.servings,
+      avgRating: item.avgRating,
+      lastCookedAt: item.lastCookedAt,
+    });
+  }
 
   return summaries;
 }

@@ -2,70 +2,37 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Loader2, X } from "lucide-react";
-
-type State = { kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string };
+import { Sparkles } from "lucide-react";
+import { Button } from "@/components/ui";
+import { tryApi } from "@/lib/api";
+import { useToast } from "@/components/Toast";
 
 export function RecipeEnhanceButton({ recipeId }: { recipeId: string }) {
   const router = useRouter();
-  const [state, setState] = useState<State>({ kind: "idle" });
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
   const [, startTransition] = useTransition();
 
   async function handleEnhance() {
-    setState({ kind: "loading" });
-
-    const res = await fetch(`/api/recipes/${recipeId}/enhance`, { method: "POST" });
-    const data = await res.json();
+    setLoading(true);
+    // tryApi never throws — a network/transport failure surfaces as an error
+    // toast instead of spinning the button forever.
+    const res = await tryApi(`/api/recipes/${recipeId}/enhance`, { method: "POST" });
+    setLoading(false);
 
     if (!res.ok) {
-      setState({ kind: "error", message: data.error ?? "Enhancement failed" });
+      toast(res.error.message || "Enhancement failed", "error");
       return;
     }
 
-    setState({ kind: "idle" });
+    toast("Recipe enhanced", "success");
     startTransition(() => router.refresh());
   }
 
-  function dismiss() {
-    setState({ kind: "idle" });
-  }
-
   return (
-    <>
-      <button
-        onClick={handleEnhance}
-        disabled={state.kind === "loading"}
-        className="flex items-center gap-1.5 rounded-lg border border-card-border px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent/50 hover:text-accent disabled:opacity-50"
-      >
-        {state.kind === "loading" ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <Sparkles className="h-3.5 w-3.5" />
-        )}
-        {state.kind === "loading" ? "Enhancing…" : "Enhance"}
-      </button>
-
-      {state.kind === "error" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={dismiss} />
-          <div className="relative mx-4 w-full max-w-md rounded-xl border border-card-border bg-card p-6 shadow-2xl">
-            <button
-              onClick={dismiss}
-              className="absolute right-4 top-4 rounded-lg p-1 text-muted transition-colors hover:bg-tag-bg hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <h2 className="text-base font-semibold text-foreground">Enhancement failed</h2>
-            <p className="mt-2 text-sm text-muted">{state.message}</p>
-            <button
-              onClick={dismiss}
-              className="mt-4 rounded-lg border border-card-border px-4 py-2 text-sm text-muted transition-colors hover:bg-tag-bg"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-    </>
+    <Button variant="secondary" size="sm" onClick={handleEnhance} loading={loading}>
+      {!loading && <Sparkles className="h-3.5 w-3.5" />}
+      {loading ? "Enhancing…" : "Enhance"}
+    </Button>
   );
 }

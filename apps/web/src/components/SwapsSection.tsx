@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
-  Loader2,
   Plus,
   Trash2,
   Pencil,
@@ -16,6 +15,8 @@ import type { IngredientSwap } from "@meal-planner/types";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ListSkeleton } from "@/components/Skeleton";
+import { Button, Input, Select, EmptyState } from "@/components/ui";
+import { api, tryApi, ApiError } from "@/lib/api";
 
 const CATEGORIES = [
   "produce",
@@ -52,7 +53,7 @@ const EMPTY_FORM: SwapFormData = {
 const COMMON_SWAPS: { from: string; to: string; category: string; reason: string }[] = [
   { from: "shallots", to: "yellow onion", category: "produce", reason: "overpriced, hard to find" },
   { from: "leeks", to: "green onions", category: "produce", reason: "expensive, often wasted" },
-  { from: "cr\u00e8me fra\u00eeche", to: "sour cream", category: "dairy", reason: "nearly identical, always in stock" },
+  { from: "crème fraîche", to: "sour cream", category: "dairy", reason: "nearly identical, always in stock" },
   { from: "mascarpone", to: "cream cheese", category: "dairy", reason: "easier to find, similar texture" },
   { from: "ghee", to: "butter", category: "dairy", reason: "simpler, always on hand" },
   { from: "flat-leaf parsley", to: "curly parsley", category: "produce", reason: "whatever is available" },
@@ -74,18 +75,22 @@ export function SwapsSection() {
   const [deleteTarget, setDeleteTarget] = useState<IngredientSwap | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [addingSuggestions, setAddingSuggestions] = useState(false);
+  const formSnapshot = useRef("");
   const { toast } = useToast();
 
   useEffect(() => {
     fetchSwaps();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchSwaps() {
     setLoading(true);
     try {
-      const res = await fetch("/api/swaps");
-      const data = await res.json();
-      setSwaps(data);
+      const data = await api<IngredientSwap[]>("/api/swaps");
+      setSwaps(Array.isArray(data) ? data : []);
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to load swaps", "error");
+      setSwaps([]);
     } finally {
       setLoading(false);
     }
@@ -93,19 +98,28 @@ export function SwapsSection() {
 
   function openAddForm() {
     setForm(EMPTY_FORM);
+    formSnapshot.current = JSON.stringify(EMPTY_FORM);
     setEditingId(null);
     setShowForm(true);
   }
 
   function openEditForm(swap: IngredientSwap) {
-    setForm({
+    const init = {
       from: swap.from,
       to: swap.to,
       category: swap.category,
       reason: swap.reason ?? "",
-    });
+    };
+    setForm(init);
+    formSnapshot.current = JSON.stringify(init);
     setEditingId(swap.id);
     setShowForm(true);
+  }
+
+  function cancelForm() {
+    if (JSON.stringify(form) !== formSnapshot.current && !window.confirm("Discard your unsaved changes?")) return;
+    setShowForm(false);
+    setEditingId(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -120,45 +134,54 @@ export function SwapsSection() {
         category: form.category,
         reason: form.reason || undefined,
       };
-      const res = editingId
-        ? await fetch(`/api/swaps/${encodeURIComponent(editingId)}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          })
-        : await fetch("/api/swaps", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-      if (!res.ok) {
-        toast("Failed to save — please try again");
-        return;
+      if (editingId) {
+        await api(`/api/swaps/${encodeURIComponent(editingId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await api("/api/swaps", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
       }
       setShowForm(false);
       setEditingId(null);
       await fetchSwaps();
       toast(editingId ? "Swap updated" : "Swap added");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to save — please try again", "error");
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/swaps/${encodeURIComponent(id)}`, { method: "DELETE" });
-    await fetchSwaps();
-    setDeleteTarget(null);
-    toast("Swap removed");
+    try {
+      await api(`/api/swaps/${encodeURIComponent(id)}`, { method: "DELETE" });
+      await fetchSwaps();
+      toast("Swap removed");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to remove swap", "error");
+    } finally {
+      setDeleteTarget(null);
+    }
   }
 
   async function handleToggleActive(swap: IngredientSwap) {
-    await fetch(`/api/swaps/${encodeURIComponent(swap.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !swap.isActive }),
-    });
-    await fetchSwaps();
-    toast(swap.isActive ? "Swap deactivated" : "Swap reactivated");
+    try {
+      await api(`/api/swaps/${encodeURIComponent(swap.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !swap.isActive }),
+      });
+      await fetchSwaps();
+      toast(swap.isActive ? "Swap deactivated" : "Swap reactivated");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to update swap", "error");
+    }
   }
 
   /** Filter suggestions to exclude ones already added (match by from+to) */
@@ -172,19 +195,21 @@ export function SwapsSection() {
   }
 
   async function addSuggestion(suggestion: typeof COMMON_SWAPS[number]) {
-    const res = await fetch("/api/swaps", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: suggestion.from,
-        to: suggestion.to,
-        category: suggestion.category,
-        reason: suggestion.reason,
-      }),
-    });
-    if (res.ok) {
+    try {
+      await api("/api/swaps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: suggestion.from,
+          to: suggestion.to,
+          category: suggestion.category,
+          reason: suggestion.reason,
+        }),
+      });
       await fetchSwaps();
-      toast(`Added: ${suggestion.from} \u2192 ${suggestion.to}`);
+      toast(`Added: ${suggestion.from} → ${suggestion.to}`);
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to add swap", "error");
     }
   }
 
@@ -193,9 +218,11 @@ export function SwapsSection() {
     if (available.length === 0) return;
     setAddingSuggestions(true);
     try {
-      await Promise.all(
+      // Per-request so a single failure doesn't sink the batch — we report the
+      // true added/failed counts rather than a blanket "Added N".
+      const results = await Promise.all(
         available.map((s) =>
-          fetch("/api/swaps", {
+          tryApi("/api/swaps", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -207,9 +234,15 @@ export function SwapsSection() {
           }),
         ),
       );
+      const added = results.filter((r) => r.ok).length;
+      const failed = results.length - added;
       await fetchSwaps();
-      setShowSuggestions(false);
-      toast(`Added ${available.length} common swaps`);
+      if (failed === 0) {
+        setShowSuggestions(false);
+        toast(`Added ${added} common swap${added !== 1 ? "s" : ""}`);
+      } else {
+        toast(`Added ${added}, ${failed} failed`, added > 0 ? "warning" : "error");
+      }
     } finally {
       setAddingSuggestions(false);
     }
@@ -235,19 +268,17 @@ export function SwapsSection() {
       {/* Header */}
       <div className="flex items-center justify-end gap-2">
         {availableSuggestions.length > 0 && (
-          <button
+          <Button
+            variant="secondary"
             onClick={() => setShowSuggestions(!showSuggestions)}
-            className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-muted transition-colors hover:bg-tag-bg hover:text-foreground"
+            className="shrink-0 whitespace-nowrap"
           >
             <Sparkles className="h-4 w-4" /> Common swaps
-          </button>
+          </Button>
         )}
-        <button
-          onClick={openAddForm}
-          className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-        >
+        <Button onClick={openAddForm} className="shrink-0 whitespace-nowrap">
           <Plus className="h-4 w-4" /> Add swap
-        </button>
+        </Button>
       </div>
 
       {/* Common Swaps Suggestions Panel */}
@@ -257,18 +288,9 @@ export function SwapsSection() {
             <h3 className="text-sm font-semibold text-foreground">
               Common swaps ({availableSuggestions.length} available)
             </h3>
-            <button
-              onClick={addAllSuggestions}
-              disabled={addingSuggestions}
-              className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-            >
-              {addingSuggestions ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Plus className="h-3.5 w-3.5" />
-              )}
-              Add all
-            </button>
+            <Button size="sm" loading={addingSuggestions} onClick={addAllSuggestions}>
+              <Plus className="h-3.5 w-3.5" /> Add all
+            </Button>
           </div>
           <div className="space-y-1.5">
             {availableSuggestions.map((s) => (
@@ -317,68 +339,60 @@ export function SwapsSection() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-medium text-muted">From (original ingredient)</label>
-              <input
+              <Input
+                className="mt-1"
                 type="text"
                 value={form.from}
                 onChange={(e) => setForm({ ...form, from: e.target.value })}
                 placeholder="e.g. shallots"
-                className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
               />
             </div>
 
             <div>
               <label className="text-xs font-medium text-muted">To (replacement)</label>
-              <input
+              <Input
+                className="mt-1"
                 type="text"
                 value={form.to}
                 onChange={(e) => setForm({ ...form, to: e.target.value })}
                 placeholder="e.g. yellow onion"
-                className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
               />
             </div>
 
             <div>
               <label className="text-xs font-medium text-muted">Category</label>
-              <select
+              <Select
+                className="mt-1"
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
               >
                 {CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat.charAt(0).toUpperCase() + cat.slice(1)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
               <label className="text-xs font-medium text-muted">Reason (optional)</label>
-              <input
+              <Input
+                className="mt-1"
                 type="text"
                 value={form.reason}
                 onChange={(e) => setForm({ ...form, reason: e.target.value })}
                 placeholder="e.g. overpriced, hard to find"
-                className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
               />
             </div>
           </div>
 
           <div className="mt-5 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => { setShowForm(false); setEditingId(null); }}
-              className="rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground"
-            >
+            <Button type="button" variant="secondary" onClick={cancelForm}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !form.from.trim() || !form.to.trim()}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId ? "Update" : "Add"}
-            </button>
+            </Button>
+            <Button type="submit" loading={saving} disabled={!form.from.trim() || !form.to.trim()}>
+              {editingId ? "Update" : "Add"}
+            </Button>
           </div>
         </form>
       )}
@@ -389,13 +403,11 @@ export function SwapsSection() {
           Active ({activeSwaps.length})
         </h2>
         {activeSwaps.length === 0 && (
-          <div className="rounded-xl border border-dashed border-card-border py-12 text-center">
-            <ArrowRightLeft className="mx-auto h-10 w-10 text-muted/30" />
-            <p className="mt-3 text-sm text-muted">No auto swaps configured yet.</p>
-            <p className="text-xs text-muted mt-1">
-              Add ingredient swaps to simplify your grocery shopping — shallots to onion, etc.
-            </p>
-          </div>
+          <EmptyState
+            icon={ArrowRightLeft}
+            title="No auto swaps configured yet"
+            description="Add ingredient swaps to simplify your grocery shopping — shallots to onion, etc."
+          />
         )}
         {grouped.map((group) => (
           <div key={group.category} className="mt-4 first:mt-0">
@@ -496,7 +508,7 @@ export function SwapsSection() {
       <ConfirmDialog
         open={!!deleteTarget}
         title="Delete swap"
-        message={`Remove "${deleteTarget?.from} \u2192 ${deleteTarget?.to}" from your auto swaps?`}
+        message={`Remove "${deleteTarget?.from} → ${deleteTarget?.to}" from your auto swaps?`}
         onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
         onCancel={() => setDeleteTarget(null)}
       />

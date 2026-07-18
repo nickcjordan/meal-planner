@@ -2,7 +2,10 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Link, Loader2 } from "lucide-react";
+import { Camera, Link as LinkIcon, Loader2, Upload } from "lucide-react";
+import { Button, Input } from "@/components/ui";
+import { tryApi } from "@/lib/api";
+import { useToast } from "@/components/Toast";
 
 interface RecipeImageUploadProps {
   recipeId: string;
@@ -11,11 +14,12 @@ interface RecipeImageUploadProps {
 
 export function RecipeImageUpload({ recipeId, imageUrl }: RecipeImageUploadProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [savingUrl, setSavingUrl] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [cacheBust, setCacheBust] = useState(0);
   const [, startTransition] = useTransition();
 
@@ -24,22 +28,21 @@ export function RecipeImageUpload({ recipeId, imageUrl }: RecipeImageUploadProps
     if (!file) return;
 
     setUploading(true);
-    setError(null);
-
     const formData = new FormData();
     formData.append("image", file);
 
-    const res = await fetch(`/api/recipes/${recipeId}/image`, {
+    const res = await tryApi(`/api/recipes/${recipeId}/image`, {
       method: "POST",
       body: formData,
     });
 
     if (res.ok) {
       setCacheBust((n) => n + 1);
+      setExpanded(false);
+      toast("Photo updated", "success");
       startTransition(() => router.refresh());
     } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Upload failed");
+      toast(res.error.message || "Upload failed", "error");
     }
 
     setUploading(false);
@@ -51,9 +54,7 @@ export function RecipeImageUpload({ recipeId, imageUrl }: RecipeImageUploadProps
     if (!url) return;
 
     setSavingUrl(true);
-    setError(null);
-
-    const res = await fetch(`/api/recipes/${recipeId}`, {
+    const res = await tryApi(`/api/recipes/${recipeId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imageUrl: url }),
@@ -62,13 +63,49 @@ export function RecipeImageUpload({ recipeId, imageUrl }: RecipeImageUploadProps
     if (res.ok) {
       setUrlInput("");
       setCacheBust((n) => n + 1);
+      setExpanded(false);
+      toast("Photo updated", "success");
       startTransition(() => router.refresh());
     } else {
-      setError("Failed to save image URL");
+      toast(res.error.message || "Failed to save image URL", "error");
     }
 
     setSavingUrl(false);
   }
+
+  const controls = (
+    <div className="mt-2 space-y-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => fileInputRef.current?.click()}
+        loading={uploading}
+      >
+        {!uploading && <Upload className="h-4 w-4" />}
+        Upload from device
+      </Button>
+      <div className="flex items-center gap-2">
+        <LinkIcon className="h-3.5 w-3.5 shrink-0 text-muted" />
+        <Input
+          type="url"
+          value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleUrlSave()}
+          placeholder="Or paste an image URL"
+          className="flex-1"
+        />
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleUrlSave}
+          loading={savingUrl}
+          disabled={!urlInput.trim()}
+        >
+          Use
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="mb-6">
@@ -81,64 +118,61 @@ export function RecipeImageUpload({ recipeId, imageUrl }: RecipeImageUploadProps
       />
 
       {imageUrl ? (
-        <div className="group relative overflow-hidden rounded-xl">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`/api/recipes/${recipeId}/image${cacheBust ? `?v=${cacheBust}` : ""}`}
-            alt="Recipe photo"
-            className="h-64 w-full object-cover"
-          />
+        <div>
+          <div className="relative overflow-hidden rounded-xl">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/recipes/${recipeId}/image${cacheBust ? `?v=${cacheBust}` : ""}`}
+              alt="Recipe photo"
+              className="h-64 w-full object-cover"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setExpanded((v) => !v)}
+              className="absolute bottom-3 right-3 bg-card/90 backdrop-blur-sm"
+            >
+              <Camera className="h-3.5 w-3.5" /> Change photo
+            </Button>
+          </div>
+          {expanded && controls}
+        </div>
+      ) : expanded ? (
+        <div>
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-card-border py-8 text-sm text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
           >
-            <span className="flex items-center gap-2 rounded-lg bg-black/70 px-3 py-1.5 text-sm font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-              {uploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Camera className="h-4 w-4" />
-              )}
-              {uploading ? "Uploading…" : "Upload new photo"}
-            </span>
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+            {uploading ? "Uploading…" : "Drop or choose a photo"}
           </button>
+          <div className="flex items-center gap-2 pt-2">
+            <LinkIcon className="h-3.5 w-3.5 shrink-0 text-muted" />
+            <Input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleUrlSave()}
+              placeholder="Or paste an image URL"
+              className="flex-1"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleUrlSave}
+              loading={savingUrl}
+              disabled={!urlInput.trim()}
+            >
+              Use
+            </Button>
+          </div>
         </div>
       ) : (
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-card-border py-8 text-sm text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
-        >
-          {uploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Camera className="h-4 w-4" />
-          )}
-          {uploading ? "Uploading…" : "Upload photo"}
-        </button>
+        <Button variant="secondary" size="sm" onClick={() => setExpanded(true)}>
+          <Camera className="h-4 w-4" /> Add photo
+        </Button>
       )}
-
-      {/* URL input — always visible so external URLs can be pasted at any time */}
-      <div className="mt-2 flex items-center gap-2">
-        <Link className="h-3.5 w-3.5 shrink-0 text-muted" />
-        <input
-          type="url"
-          value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleUrlSave()}
-          placeholder={imageUrl ? "Paste a URL to replace photo" : "Or paste an image URL"}
-          className="flex-1 rounded-lg border border-input-border bg-card px-3 py-1.5 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-        />
-        <button
-          onClick={handleUrlSave}
-          disabled={savingUrl || !urlInput.trim()}
-          className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
-        >
-          {savingUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : "Use"}
-        </button>
-      </div>
-
-      {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
     </div>
   );
 }

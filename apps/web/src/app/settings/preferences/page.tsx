@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Loader2,
   Plus,
   Trash2,
   Pencil,
@@ -20,6 +19,7 @@ import {
   ChevronRight,
   X,
   ArrowRightLeft,
+  AlertCircle,
 } from "lucide-react";
 import type {
   FamilyMember,
@@ -32,6 +32,8 @@ import type {
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CardSkeleton } from "@/components/Skeleton";
+import { Button, Input, Select, Card, PageHeader, EmptyState } from "@/components/ui";
+import { api, ApiError } from "@/lib/api";
 
 // ─── Constants ───────────────────────────────────────────────
 
@@ -67,14 +69,15 @@ const LENIENCY_STYLES: Record<AdaptationLeniency, string> = {
   "gentle-reminder": "bg-tag-bg text-muted",
 };
 
-const inputClass = "mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none";
-
+// Decorative avatar hues (distinct, not semantic states — no token equivalent).
 function memberInitialColor(name: string) {
   const colors = ["bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-purple-500", "bg-rose-500", "bg-cyan-500"];
   let hash = 0;
   for (const ch of name) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
   return colors[Math.abs(hash) % colors.length];
 }
+
+const DISCARD_MESSAGE = "Discard your unsaved changes?";
 
 // ─── Page Component ──────────────────────────────────────────
 
@@ -83,12 +86,14 @@ export default function FamilySettingsPage() {
   const [adaptations, setAdaptations] = useState<DietaryAdaptation[]>([]);
   const [preferences, setPreferences] = useState<FamilyPreference[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Member form
   const [showMemberForm, setShowMemberForm] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [memberForm, setMemberForm] = useState({ name: "", role: "", notes: "" });
   const [savingMember, setSavingMember] = useState(false);
+  const memberSnapshot = useRef("");
 
   // Adaptation form
   const [showAdaptForm, setShowAdaptForm] = useState(false);
@@ -99,6 +104,7 @@ export default function FamilySettingsPage() {
   });
   const [savingAdapt, setSavingAdapt] = useState(false);
   const [expandedAdapt, setExpandedAdapt] = useState<string | null>(null);
+  const adaptSnapshot = useRef("");
 
   // Preference form
   const [showPrefForm, setShowPrefForm] = useState(false);
@@ -107,20 +113,24 @@ export default function FamilySettingsPage() {
     type: "restriction" as PreferenceType, key: "", value: "", memberId: "", startDate: "", endDate: "",
   });
   const [savingPref, setSavingPref] = useState(false);
+  const prefSnapshot = useRef("");
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "member" | "adaptation" | "preference"; id: string; key?: string; name: string } | null>(null);
   const { toast } = useToast();
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [m, a, p] = await Promise.all([
-        fetch("/api/members").then((r) => r.json()),
-        fetch("/api/adaptations").then((r) => r.json()),
-        fetch("/api/preferences").then((r) => r.json()),
+        api<FamilyMember[]>("/api/members"),
+        api<DietaryAdaptation[]>("/api/adaptations"),
+        api<FamilyPreference[]>("/api/preferences"),
       ]);
-      setMembers(m);
-      setAdaptations(a);
-      setPreferences(p);
+      setMembers(Array.isArray(m) ? m : []);
+      setAdaptations(Array.isArray(a) ? a : []);
+      setPreferences(Array.isArray(p) ? p : []);
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : "Failed to load family settings");
     } finally {
       setLoading(false);
     }
@@ -130,64 +140,99 @@ export default function FamilySettingsPage() {
 
   // ─── Member handlers ────────────────────────────────────
   function openAddMember() {
-    setMemberForm({ name: "", role: "", notes: "" });
+    const init = { name: "", role: "", notes: "" };
+    setMemberForm(init);
+    memberSnapshot.current = JSON.stringify(init);
     setEditingMemberId(null);
     setShowMemberForm(true);
   }
   function openEditMember(m: FamilyMember) {
-    setMemberForm({ name: m.name, role: m.role ?? "", notes: m.notes ?? "" });
+    const init = { name: m.name, role: m.role ?? "", notes: m.notes ?? "" };
+    setMemberForm(init);
+    memberSnapshot.current = JSON.stringify(init);
     setEditingMemberId(m.id);
     setShowMemberForm(true);
+  }
+  function cancelMemberForm() {
+    if (JSON.stringify(memberForm) !== memberSnapshot.current && !window.confirm(DISCARD_MESSAGE)) return;
+    setShowMemberForm(false);
+    setEditingMemberId(null);
   }
   async function handleMemberSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!memberForm.name.trim()) return;
     setSavingMember(true);
+    const body = JSON.stringify({
+      name: memberForm.name.trim(),
+      role: memberForm.role || undefined,
+      notes: memberForm.notes || undefined,
+    });
     try {
       if (editingMemberId) {
-        await fetch(`/api/members/${editingMemberId}`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: memberForm.name.trim(), role: memberForm.role || undefined, notes: memberForm.notes || undefined }),
+        await api(`/api/members/${editingMemberId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, body,
         });
       } else {
-        await fetch("/api/members", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: memberForm.name.trim(), role: memberForm.role || undefined, notes: memberForm.notes || undefined }),
+        await api("/api/members", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body,
         });
       }
       setShowMemberForm(false);
       setEditingMemberId(null);
       await fetchAll();
       toast(editingMemberId ? "Member updated" : "Member added");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to save member", "error");
     } finally { setSavingMember(false); }
   }
   async function toggleMemberActive(m: FamilyMember) {
-    await fetch(`/api/members/${m.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !m.isActive }),
-    });
-    await fetchAll();
+    try {
+      await api(`/api/members/${m.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !m.isActive }),
+      });
+      await fetchAll();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to update member", "error");
+    }
   }
   async function deleteMember(id: string) {
-    await fetch(`/api/members/${id}`, { method: "DELETE" });
-    await fetchAll();
-    setDeleteConfirm(null);
-    toast("Member removed");
+    try {
+      await api(`/api/members/${id}`, { method: "DELETE" });
+      await fetchAll();
+      toast("Member removed");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to remove member", "error");
+    } finally {
+      setDeleteConfirm(null);
+    }
   }
 
   // ─── Adaptation handlers ────────────────────────────────
   function openAddAdapt() {
-    setAdaptForm({ memberId: members[0]?.id ?? "", name: "", description: "", leniency: "when-easy", skipNote: "", rules: [] });
+    const init = {
+      memberId: members[0]?.id ?? "", name: "", description: "",
+      leniency: "when-easy" as AdaptationLeniency, skipNote: "", rules: [] as SubstitutionRule[],
+    };
+    setAdaptForm(init);
+    adaptSnapshot.current = JSON.stringify(init);
     setEditingAdaptId(null);
     setShowAdaptForm(true);
   }
   function openEditAdapt(a: DietaryAdaptation) {
-    setAdaptForm({
+    const init = {
       memberId: a.memberId, name: a.name, description: a.description ?? "",
       leniency: a.leniency, skipNote: a.skipNote ?? "", rules: [...a.rules],
-    });
+    };
+    setAdaptForm(init);
+    adaptSnapshot.current = JSON.stringify(init);
     setEditingAdaptId(a.id);
     setShowAdaptForm(true);
+  }
+  function cancelAdaptForm() {
+    if (JSON.stringify(adaptForm) !== adaptSnapshot.current && !window.confirm(DISCARD_MESSAGE)) return;
+    setShowAdaptForm(false);
+    setEditingAdaptId(null);
   }
   function addRule() {
     setAdaptForm({ ...adaptForm, rules: [...adaptForm.rules, { id: crypto.randomUUID(), from: "", to: "", quality: "exact" as const }] });
@@ -212,11 +257,11 @@ export default function FamilySettingsPage() {
         rules: adaptForm.rules.filter((r) => r.from.trim() && r.to.trim()),
       };
       if (editingAdaptId) {
-        await fetch(`/api/adaptations/${editingAdaptId}`, {
+        await api(`/api/adaptations/${editingAdaptId}`, {
           method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
         });
       } else {
-        await fetch("/api/adaptations", {
+        await api("/api/adaptations", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
         });
       }
@@ -224,65 +269,105 @@ export default function FamilySettingsPage() {
       setEditingAdaptId(null);
       await fetchAll();
       toast(editingAdaptId ? "Adaptation updated" : "Adaptation added");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to save adaptation", "error");
     } finally { setSavingAdapt(false); }
   }
   async function toggleAdaptActive(a: DietaryAdaptation) {
-    await fetch(`/api/adaptations/${a.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !a.isActive }),
-    });
-    await fetchAll();
+    try {
+      await api(`/api/adaptations/${a.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !a.isActive }),
+      });
+      await fetchAll();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to update adaptation", "error");
+    }
   }
   async function deleteAdapt(id: string) {
-    await fetch(`/api/adaptations/${id}`, { method: "DELETE" });
-    await fetchAll();
-    setDeleteConfirm(null);
-    toast("Adaptation removed");
+    try {
+      await api(`/api/adaptations/${id}`, { method: "DELETE" });
+      await fetchAll();
+      toast("Adaptation removed");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to remove adaptation", "error");
+    } finally {
+      setDeleteConfirm(null);
+    }
   }
 
   // ─── Preference handlers ────────────────────────────────
   function openAddPref(type?: PreferenceType) {
-    setPrefForm({ type: type ?? "restriction", key: "", value: "", memberId: "", startDate: "", endDate: "" });
+    const init = { type: type ?? "restriction" as PreferenceType, key: "", value: "", memberId: "", startDate: "", endDate: "" };
+    setPrefForm(init);
+    prefSnapshot.current = JSON.stringify(init);
     setEditingPrefKey(null);
     setShowPrefForm(true);
   }
   function openEditPref(pref: FamilyPreference) {
-    setPrefForm({
+    const init = {
       type: pref.type, key: pref.key, value: pref.value,
       memberId: pref.memberId ?? "", startDate: pref.startDate ?? "", endDate: pref.endDate ?? "",
-    });
+    };
+    setPrefForm(init);
+    prefSnapshot.current = JSON.stringify(init);
     setEditingPrefKey({ type: pref.type, key: pref.key });
     setShowPrefForm(true);
+  }
+  function cancelPrefForm() {
+    if (JSON.stringify(prefForm) !== prefSnapshot.current && !window.confirm(DISCARD_MESSAGE)) return;
+    setShowPrefForm(false);
+    setEditingPrefKey(null);
   }
   async function handlePrefSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!prefForm.key.trim() || !prefForm.value.trim()) return;
     setSavingPref(true);
+    const oldKey = editingPrefKey;
     try {
-      if (editingPrefKey && (editingPrefKey.type !== prefForm.type || editingPrefKey.key !== prefForm.key)) {
-        await fetch(`/api/preferences/${encodeURIComponent(editingPrefKey.type)}/${encodeURIComponent(editingPrefKey.key)}`, { method: "DELETE" });
-      }
       const selectedMember = members.find((m) => m.id === prefForm.memberId);
-      await fetch("/api/preferences", {
+      const newKey = prefForm.key.trim().toLowerCase();
+      const keyChanged = !!oldKey && (oldKey.type !== prefForm.type || oldKey.key !== newKey);
+
+      // Safe edit: create/update the replacement FIRST (setPreference is an
+      // upsert keyed on type+key), then delete the old record only after the
+      // new one is confirmed saved. A failure never destroys existing data —
+      // worst case is a harmless duplicate if the delete step fails.
+      await api("/api/preferences", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: prefForm.type, key: prefForm.key.trim().toLowerCase(), value: prefForm.value.trim(),
+          type: prefForm.type, key: newKey, value: prefForm.value.trim(),
           memberId: prefForm.memberId || undefined,
           member: selectedMember?.name ?? undefined,
           startDate: prefForm.startDate || undefined, endDate: prefForm.endDate || undefined,
         }),
       });
+
+      if (keyChanged && oldKey) {
+        await api(
+          `/api/preferences/${encodeURIComponent(oldKey.type)}/${encodeURIComponent(oldKey.key)}`,
+          { method: "DELETE" },
+        );
+      }
+
       setShowPrefForm(false);
       setEditingPrefKey(null);
       await fetchAll();
-      toast(editingPrefKey ? "Preference updated" : "Preference added");
+      toast(oldKey ? "Preference updated" : "Preference added");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to save preference", "error");
     } finally { setSavingPref(false); }
   }
   async function deletePref(type: string, key: string) {
-    await fetch(`/api/preferences/${encodeURIComponent(type)}/${encodeURIComponent(key)}`, { method: "DELETE" });
-    await fetchAll();
-    setDeleteConfirm(null);
-    toast("Preference removed");
+    try {
+      await api(`/api/preferences/${encodeURIComponent(type)}/${encodeURIComponent(key)}`, { method: "DELETE" });
+      await fetchAll();
+      toast("Preference removed");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to remove preference", "error");
+    } finally {
+      setDeleteConfirm(null);
+    }
   }
 
   function handleDeleteConfirm() {
@@ -304,6 +389,19 @@ export default function FamilySettingsPage() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <EmptyState
+          icon={AlertCircle}
+          title="Couldn't load family settings"
+          description={loadError}
+          action={<Button onClick={fetchAll}>Retry</Button>}
+        />
+      </div>
+    );
+  }
+
   const activeMembers = members.filter((m) => m.isActive);
   const inactiveMembers = members.filter((m) => !m.isActive);
   const memberMap = Object.fromEntries(members.map((m) => [m.id, m]));
@@ -312,17 +410,14 @@ export default function FamilySettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold">Family &amp; Preferences</h1>
-        <p className="mt-2 text-sm text-muted">
-          Family members, dietary adaptations, and meal planning preferences. Claude uses all of this every time it plans.
-        </p>
-      </div>
+      <PageHeader
+        title="Family & Preferences"
+        subtitle="Family members, dietary adaptations, and meal planning preferences. Claude uses all of this every time it plans."
+      />
 
       {/* Family summary card */}
       {members.length > 0 && (
-        <div className="mt-4 rounded-lg border border-card-border bg-card px-5 py-3 text-sm">
+        <Card padding="none" className="mt-4 px-5 py-3 text-sm">
           <div className="flex items-center gap-3">
             <div className="flex -space-x-2">
               {members.slice(0, 5).map((m) => (
@@ -343,11 +438,11 @@ export default function FamilySettingsPage() {
             </div>
           </div>
           {inactiveMembers.length > 0 && (
-            <p className="mt-1.5 text-xs text-amber-500">
+            <p className="mt-1.5 text-xs text-warning">
               {inactiveMembers.map((m) => m.name).join(", ")} {inactiveMembers.length === 1 ? "is" : "are"} marked away this week.
             </p>
           )}
-        </div>
+        </Card>
       )}
 
       {/* ════════════════════════════════════════════════════════
@@ -358,9 +453,9 @@ export default function FamilySettingsPage() {
           <h2 className="flex items-center gap-2 text-sm font-semibold text-muted uppercase tracking-wider">
             <Users className="h-4 w-4" /> Family Members ({members.length})
           </h2>
-          <button onClick={openAddMember} className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover">
+          <Button size="sm" onClick={openAddMember}>
             <Plus className="h-3.5 w-3.5" /> Add Member
-          </button>
+          </Button>
         </div>
 
         {showMemberForm && (
@@ -369,34 +464,36 @@ export default function FamilySettingsPage() {
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted">Name</label>
-                <input type="text" value={memberForm.name} onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })} placeholder="e.g. Nick" className={inputClass} />
+                <Input className="mt-1" type="text" value={memberForm.name} onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })} placeholder="e.g. Nick" />
               </div>
               <div>
                 <label className="text-xs font-medium text-muted">Role</label>
-                <select value={memberForm.role} onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value })} className={inputClass}>
+                <Select className="mt-1" value={memberForm.role} onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value })}>
                   <option value="">Select...</option>
                   {ROLES.map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="text-xs font-medium text-muted">Notes <span className="text-muted/50">(optional)</span></label>
-                <input type="text" value={memberForm.notes} onChange={(e) => setMemberForm({ ...memberForm, notes: e.target.value })} placeholder="e.g. picky eater" className={inputClass} />
+                <Input className="mt-1" type="text" value={memberForm.notes} onChange={(e) => setMemberForm({ ...memberForm, notes: e.target.value })} placeholder="e.g. picky eater" />
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => { setShowMemberForm(false); setEditingMemberId(null); }} className="rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground">Cancel</button>
-              <button type="submit" disabled={savingMember || !memberForm.name.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
-                {savingMember ? <Loader2 className="h-4 w-4 animate-spin" /> : editingMemberId ? "Update" : "Add"}
-              </button>
+              <Button type="button" variant="secondary" onClick={cancelMemberForm}>Cancel</Button>
+              <Button type="submit" loading={savingMember} disabled={!memberForm.name.trim()}>
+                {editingMemberId ? "Update" : "Add"}
+              </Button>
             </div>
           </form>
         )}
 
         {members.length === 0 && (
-          <div className="mt-4 rounded-xl border border-dashed border-card-border py-10 text-center">
-            <Users className="mx-auto h-10 w-10 text-muted/30" />
-            <p className="mt-3 text-sm text-muted">No family members yet.</p>
-            <p className="text-xs text-muted mt-1">Add the people you cook for so Claude can personalize plans.</p>
+          <div className="mt-4">
+            <EmptyState
+              icon={Users}
+              title="No family members yet"
+              description="Add the people you cook for so Claude can personalize plans."
+            />
           </div>
         )}
 
@@ -445,9 +542,9 @@ export default function FamilySettingsPage() {
             <FlaskConical className="h-4 w-4" /> Dietary Adaptations ({adaptations.length})
           </h2>
           {members.length > 0 && (
-            <button onClick={openAddAdapt} className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover">
+            <Button size="sm" onClick={openAddAdapt}>
               <Plus className="h-3.5 w-3.5" /> Add Adaptation
-            </button>
+            </Button>
           )}
         </div>
 
@@ -457,17 +554,17 @@ export default function FamilySettingsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted">Family member</label>
-                <select value={adaptForm.memberId} onChange={(e) => setAdaptForm({ ...adaptForm, memberId: e.target.value })} className={inputClass}>
+                <Select className="mt-1" value={adaptForm.memberId} onChange={(e) => setAdaptForm({ ...adaptForm, memberId: e.target.value })}>
                   {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="text-xs font-medium text-muted">Name</label>
-                <input type="text" value={adaptForm.name} onChange={(e) => setAdaptForm({ ...adaptForm, name: e.target.value })} placeholder="e.g. Lactose Intolerance" className={inputClass} />
+                <Input className="mt-1" type="text" value={adaptForm.name} onChange={(e) => setAdaptForm({ ...adaptForm, name: e.target.value })} placeholder="e.g. Lactose Intolerance" />
               </div>
               <div className="col-span-2">
                 <label className="text-xs font-medium text-muted">Description <span className="text-muted/50">(optional)</span></label>
-                <input type="text" value={adaptForm.description} onChange={(e) => setAdaptForm({ ...adaptForm, description: e.target.value })} placeholder="e.g. Can eat dairy with Lactaid pills, prefers LF swaps where easy" className={inputClass} />
+                <Input className="mt-1" type="text" value={adaptForm.description} onChange={(e) => setAdaptForm({ ...adaptForm, description: e.target.value })} placeholder="e.g. Can eat dairy with Lactaid pills, prefers LF swaps where easy" />
               </div>
               <div>
                 <label className="text-xs font-medium text-muted">Leniency</label>
@@ -486,7 +583,7 @@ export default function FamilySettingsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-muted">Skip note</label>
-                <input type="text" value={adaptForm.skipNote} onChange={(e) => setAdaptForm({ ...adaptForm, skipNote: e.target.value })} placeholder="e.g. Take Lactaid pill with meal" className={inputClass} />
+                <Input className="mt-1" type="text" value={adaptForm.skipNote} onChange={(e) => setAdaptForm({ ...adaptForm, skipNote: e.target.value })} placeholder="e.g. Take Lactaid pill with meal" />
                 <p className="mt-1 text-xs text-muted">Shown when a meal is NOT adapted</p>
               </div>
             </div>
@@ -506,10 +603,10 @@ export default function FamilySettingsPage() {
                 {adaptForm.rules.map((rule, i) => (
                   <div key={rule.id} className="flex items-start gap-2 rounded-lg border border-input-border bg-background p-3">
                     <div className="grid flex-1 grid-cols-2 gap-2">
-                      <input type="text" value={rule.from} onChange={(e) => updateRule(i, { from: e.target.value })} placeholder="Original (e.g. milk)" className="rounded-lg border border-input-border bg-card px-2.5 py-1.5 text-sm focus:border-accent focus:outline-none" />
+                      <Input type="text" value={rule.from} onChange={(e) => updateRule(i, { from: e.target.value })} placeholder="Original (e.g. milk)" />
                       <div className="flex items-center gap-2">
                         <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted" />
-                        <input type="text" value={rule.to} onChange={(e) => updateRule(i, { to: e.target.value })} placeholder="Replacement (e.g. LF milk)" className="flex-1 rounded-lg border border-input-border bg-card px-2.5 py-1.5 text-sm focus:border-accent focus:outline-none" />
+                        <Input type="text" value={rule.to} onChange={(e) => updateRule(i, { to: e.target.value })} placeholder="Replacement (e.g. LF milk)" />
                       </div>
                       <div className="flex items-center gap-2">
                         <button type="button" onClick={() => updateRule(i, { quality: rule.quality === "exact" ? "approximate" : "exact" })}
@@ -518,7 +615,7 @@ export default function FamilySettingsPage() {
                         </button>
                       </div>
                       {rule.quality === "approximate" && (
-                        <input type="text" value={rule.condition ?? ""} onChange={(e) => updateRule(i, { condition: e.target.value })} placeholder="When to use (e.g. in soups but not baking)" className="rounded-lg border border-input-border bg-card px-2.5 py-1.5 text-sm focus:border-accent focus:outline-none" />
+                        <Input type="text" value={rule.condition ?? ""} onChange={(e) => updateRule(i, { condition: e.target.value })} placeholder="When to use (e.g. in soups but not baking)" />
                       )}
                     </div>
                     <button type="button" onClick={() => removeRule(i)} className="mt-1 rounded-lg p-1 text-muted hover:bg-danger/10 hover:text-danger">
@@ -530,19 +627,21 @@ export default function FamilySettingsPage() {
             </div>
 
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => { setShowAdaptForm(false); setEditingAdaptId(null); }} className="rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground">Cancel</button>
-              <button type="submit" disabled={savingAdapt || !adaptForm.name.trim() || !adaptForm.memberId} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
-                {savingAdapt ? <Loader2 className="h-4 w-4 animate-spin" /> : editingAdaptId ? "Update" : "Add"}
-              </button>
+              <Button type="button" variant="secondary" onClick={cancelAdaptForm}>Cancel</Button>
+              <Button type="submit" loading={savingAdapt} disabled={!adaptForm.name.trim() || !adaptForm.memberId}>
+                {editingAdaptId ? "Update" : "Add"}
+              </Button>
             </div>
           </form>
         )}
 
         {adaptations.length === 0 && members.length > 0 && (
-          <div className="mt-4 rounded-xl border border-dashed border-card-border py-10 text-center">
-            <FlaskConical className="mx-auto h-10 w-10 text-muted/30" />
-            <p className="mt-3 text-sm text-muted">No dietary adaptations yet.</p>
-            <p className="text-xs text-muted mt-1">Add ingredient swap profiles for lactose intolerance, gluten sensitivity, etc.</p>
+          <div className="mt-4">
+            <EmptyState
+              icon={FlaskConical}
+              title="No dietary adaptations yet"
+              description="Add ingredient swap profiles for lactose intolerance, gluten sensitivity, etc."
+            />
           </div>
         )}
         {members.length === 0 && (
@@ -611,9 +710,9 @@ export default function FamilySettingsPage() {
           <h2 className="flex items-center gap-2 text-sm font-semibold text-muted uppercase tracking-wider">
             <ShieldAlert className="h-4 w-4" /> Preferences ({preferences.length})
           </h2>
-          <button onClick={() => openAddPref()} className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover">
+          <Button size="sm" onClick={() => openAddPref()}>
             <Plus className="h-3.5 w-3.5" /> Add Preference
-          </button>
+          </Button>
         </div>
 
         {showPrefForm && (
@@ -637,37 +736,37 @@ export default function FamilySettingsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted">Subject</label>
-                <input type="text" value={prefForm.key} onChange={(e) => setPrefForm({ ...prefForm, key: e.target.value })} placeholder={currentPrefType?.placeholder.key} className={inputClass} />
+                <Input className="mt-1" type="text" value={prefForm.key} onChange={(e) => setPrefForm({ ...prefForm, key: e.target.value })} placeholder={currentPrefType?.placeholder.key} />
               </div>
               <div>
                 <label className="text-xs font-medium text-muted">Family member <span className="text-muted/50">(optional)</span></label>
-                <select value={prefForm.memberId} onChange={(e) => setPrefForm({ ...prefForm, memberId: e.target.value })} className={inputClass}>
+                <Select className="mt-1" value={prefForm.memberId} onChange={(e) => setPrefForm({ ...prefForm, memberId: e.target.value })}>
                   <option value="">All / Family-wide</option>
                   {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                </Select>
               </div>
               <div className="col-span-2">
                 <label className="text-xs font-medium text-muted">Details</label>
-                <input type="text" value={prefForm.value} onChange={(e) => setPrefForm({ ...prefForm, value: e.target.value })} placeholder={currentPrefType?.placeholder.value} className={inputClass} />
+                <Input className="mt-1" type="text" value={prefForm.value} onChange={(e) => setPrefForm({ ...prefForm, value: e.target.value })} placeholder={currentPrefType?.placeholder.value} />
               </div>
               {prefForm.type === "diet" && (
                 <>
                   <div>
                     <label className="text-xs font-medium text-muted">Start date <span className="text-muted/50">(optional)</span></label>
-                    <input type="date" value={prefForm.startDate} onChange={(e) => setPrefForm({ ...prefForm, startDate: e.target.value })} className={inputClass} />
+                    <Input className="mt-1" type="date" value={prefForm.startDate} onChange={(e) => setPrefForm({ ...prefForm, startDate: e.target.value })} />
                   </div>
                   <div>
                     <label className="text-xs font-medium text-muted">End date <span className="text-muted/50">(optional)</span></label>
-                    <input type="date" value={prefForm.endDate} onChange={(e) => setPrefForm({ ...prefForm, endDate: e.target.value })} className={inputClass} />
+                    <Input className="mt-1" type="date" value={prefForm.endDate} onChange={(e) => setPrefForm({ ...prefForm, endDate: e.target.value })} />
                   </div>
                 </>
               )}
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => { setShowPrefForm(false); setEditingPrefKey(null); }} className="rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground">Cancel</button>
-              <button type="submit" disabled={savingPref || !prefForm.key.trim() || !prefForm.value.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
-                {savingPref ? <Loader2 className="h-4 w-4 animate-spin" /> : editingPrefKey ? "Update" : "Add"}
-              </button>
+              <Button type="button" variant="secondary" onClick={cancelPrefForm}>Cancel</Button>
+              <Button type="submit" loading={savingPref} disabled={!prefForm.key.trim() || !prefForm.value.trim()}>
+                {editingPrefKey ? "Update" : "Add"}
+              </Button>
             </div>
           </form>
         )}
@@ -713,10 +812,12 @@ export default function FamilySettingsPage() {
         })}
 
         {preferences.length === 0 && (
-          <div className="mt-4 rounded-xl border border-dashed border-card-border py-10 text-center">
-            <ShieldAlert className="mx-auto h-10 w-10 text-muted/30" />
-            <p className="mt-3 text-sm text-muted">No preferences configured yet.</p>
-            <p className="text-xs text-muted mt-1">Add allergies, dislikes, schedule constraints, and more.</p>
+          <div className="mt-4">
+            <EmptyState
+              icon={ShieldAlert}
+              title="No preferences configured yet"
+              description="Add allergies, dislikes, schedule constraints, and more."
+            />
           </div>
         )}
 
@@ -737,7 +838,7 @@ export default function FamilySettingsPage() {
       {/* ════════════════════════════════════════════════════════
           Info Section
           ════════════════════════════════════════════════════════ */}
-      <div className="mt-10 rounded-lg border border-card-border bg-card p-6 text-sm text-muted">
+      <Card className="mt-10 text-sm text-muted">
         <p className="font-medium text-foreground">How this page works</p>
         <ul className="mt-2 ml-4 list-disc space-y-1">
           <li><strong>Family Members</strong> tell Claude who it&rsquo;s cooking for. Mark someone as &ldquo;away&rdquo; to adjust servings for the week.</li>
@@ -745,7 +846,7 @@ export default function FamilySettingsPage() {
           <li><strong>Preferences</strong> are planning rules: restrictions (hard no), dislikes (avoid), likes (favor), cuisine affinities, schedule constraints, and temporary diets.</li>
           <li>Everything here can also be managed through the planning chat: &ldquo;My daughter is allergic to tree nuts&rdquo;, &ldquo;Add my son Jake&rdquo;, etc.</li>
         </ul>
-      </div>
+      </Card>
 
       <ConfirmDialog
         open={!!deleteConfirm}

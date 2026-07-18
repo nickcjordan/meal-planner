@@ -1,18 +1,15 @@
 "use client";
 
 import { SwapsSection } from "@/components/SwapsSection";
+import { PageHeader } from "@/components/ui";
 
 export default function SwapsPage() {
   return (
     <div className="mx-auto max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Auto Swaps</h1>
-        <p className="mt-1 text-sm text-muted">
-          Ingredients that should always be replaced with something simpler,
-          cheaper, or easier to find. Applied automatically when planning meals
-          and building grocery lists.
-        </p>
-      </div>
+      <PageHeader
+        title="Auto Swaps"
+        subtitle="Ingredients that should always be replaced with something simpler, cheaper, or easier to find. Applied automatically when planning meals and building grocery lists."
+      />
 
       <div className="mt-6">
         <SwapsSection />

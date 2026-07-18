@@ -1,9 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, RefreshCw, Store, Wifi, WifiOff, Newspaper, Search } from "lucide-react";
+import { Loader2, RefreshCw, Store, Wifi, WifiOff, Newspaper, Search, AlertCircle } from "lucide-react";
 import type { HebStoreConfig, WeeklyAdData } from "@meal-planner/types";
 import { CardSkeleton } from "@/components/Skeleton";
+import { useToast } from "@/components/Toast";
+import { Button, Input, Card, Badge, EmptyState, PageHeader } from "@/components/ui";
+import { api, ApiError } from "@/lib/api";
+import { decodeHtmlEntities } from "@/lib/format";
 
 interface HebStatus {
   connected: boolean;
@@ -38,15 +42,19 @@ export default function HebSettingsPage() {
   const [status, setStatus] = useState<HebStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [showStoreSearch, setShowStoreSearch] = useState(false);
   const [storeQuery, setStoreQuery] = useState("");
   const [storeResults, setStoreResults] = useState<HebStoreConfig[]>([]);
   const [searchingStores, setSearchingStores] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [lastSearchedQuery, setLastSearchedQuery] = useState("");
   const [savingStore, setSavingStore] = useState(false);
   const [weeklyAd, setWeeklyAd] = useState<WeeklyAdData | null>(null);
   const [loadingAd, setLoadingAd] = useState(false);
   const [dealFilter, setDealFilter] = useState("");
   const [sortByDeal, setSortByDeal] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchStatus();
@@ -56,8 +64,7 @@ export default function HebSettingsPage() {
   async function fetchStatus() {
     setLoading(true);
     try {
-      const res = await fetch("/api/heb/status");
-      const data = await res.json();
+      const data = await api<HebStatus>("/api/heb/status");
       setStatus(data);
     } catch {
       setStatus(null);
@@ -69,12 +76,10 @@ export default function HebSettingsPage() {
   async function fetchWeeklyAd() {
     setLoadingAd(true);
     try {
-      const res = await fetch("/api/heb/weekly-ad");
-      if (res.ok) {
-        setWeeklyAd(await res.json());
-      }
+      setWeeklyAd(await api<WeeklyAdData>("/api/heb/weekly-ad"));
     } catch {
-      // silent — deals section just won't show
+      // Non-critical — the deals section renders its own "couldn't load" note.
+      setWeeklyAd(null);
     } finally {
       setLoadingAd(false);
     }
@@ -82,11 +87,15 @@ export default function HebSettingsPage() {
 
   async function handleRefresh() {
     setRefreshing(true);
+    setRefreshError(null);
     try {
-      const res = await fetch("/api/heb/refresh", { method: "POST" });
-      if (res.ok) {
-        await fetchStatus();
-      }
+      await api("/api/heb/refresh", { method: "POST" });
+      await fetchStatus();
+      toast("H-E-B session refreshed", "success");
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Failed to connect to H-E-B";
+      setRefreshError(message);
+      toast(message, "error");
     } finally {
       setRefreshing(false);
     }
@@ -95,14 +104,17 @@ export default function HebSettingsPage() {
   async function handleStoreSearch() {
     if (!storeQuery.trim()) return;
     setSearchingStores(true);
+    setSearched(false);
     try {
-      const res = await fetch(
+      const data = await api<HebStoreConfig[]>(
         `/api/heb/stores/search?q=${encodeURIComponent(storeQuery)}`,
       );
-      if (res.ok) {
-        const data = await res.json();
-        setStoreResults(data);
-      }
+      setStoreResults(Array.isArray(data) ? data : []);
+      setLastSearchedQuery(storeQuery.trim());
+      setSearched(true);
+    } catch (err) {
+      setStoreResults([]);
+      toast(err instanceof ApiError ? err.message : "Store search failed", "error");
     } finally {
       setSearchingStores(false);
     }
@@ -111,17 +123,19 @@ export default function HebSettingsPage() {
   async function handleSelectStore(store: HebStoreConfig) {
     setSavingStore(true);
     try {
-      const res = await fetch("/api/heb/store", {
+      await api("/api/heb/store", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(store),
       });
-      if (res.ok) {
-        setStoreResults([]);
-        setStoreQuery("");
-        setShowStoreSearch(false);
-        await fetchStatus();
-      }
+      setStoreResults([]);
+      setStoreQuery("");
+      setSearched(false);
+      setShowStoreSearch(false);
+      await fetchStatus();
+      toast(`Store set to ${store.storeName}`, "success");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to set store", "error");
     } finally {
       setSavingStore(false);
     }
@@ -171,18 +185,23 @@ export default function HebSettingsPage() {
 
   const storeName = status?.store?.storeName ?? "H-E-B";
   const storeId = status?.store?.storeId ?? "790";
+  // Connection badge: fresh session, expired session, or never connected.
+  const connectionBadge = status?.cookieFresh
+    ? { color: "success" as const, label: "Connected" }
+    : status?.connected
+      ? { color: "warning" as const, label: "Expired" }
+      : { color: "neutral" as const, label: "Not connected" };
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-2xl font-bold">H-E-B Integration</h1>
-      <p className="mt-2 text-sm text-muted">
-        Connect to HEB for real product prices, availability, and sale alerts on
-        your shopping lists.
-      </p>
+      <PageHeader
+        title="H-E-B Integration"
+        subtitle="Connect to H-E-B for real product prices, availability, and sale alerts on your shopping lists."
+      />
 
       {/* Connection Status */}
-      <div className="mt-8 rounded-lg border border-card-border bg-card p-6">
-        <div className="flex items-center justify-between">
+      <Card className="mt-8">
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             {status?.cookieFresh ? (
               <Wifi className="h-5 w-5 text-success" />
@@ -190,9 +209,12 @@ export default function HebSettingsPage() {
               <WifiOff className="h-5 w-5 text-muted" />
             )}
             <div>
-              <p className="font-medium">
-                {status?.cookieFresh ? "Connected" : "Not connected"}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="font-medium">
+                  {status?.cookieFresh ? "Connected" : "Not connected"}
+                </p>
+                <Badge color={connectionBadge.color}>{connectionBadge.label}</Badge>
+              </div>
               {status?.cookieAge !== undefined && (
                 <p className="text-xs text-muted">
                   Session age: {Math.round(status.cookieAge / 1000)}s
@@ -201,39 +223,47 @@ export default function HebSettingsPage() {
               )}
             </div>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
-          >
+          <Button onClick={handleRefresh} loading={refreshing} className="shrink-0">
             {refreshing ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Connecting...
-              </>
+              "Connecting..."
             ) : (
               <>
                 <RefreshCw className="h-4 w-4" />
                 {status?.connected ? "Refresh Session" : "Connect"}
               </>
             )}
-          </button>
+          </Button>
         </div>
         {refreshing && (
           <p className="mt-3 text-xs text-muted">
-            Launching Chrome to establish HEB session... This takes about 15
-            seconds.
+            Launching Chrome to establish an H-E-B session... This takes about 15 seconds.
           </p>
         )}
-      </div>
+        {!refreshing && refreshError && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-xs text-danger">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">{refreshError}</p>
+              <p className="mt-1 text-danger/80">
+                Make sure Chrome is installed and reachable, then try again. If it keeps failing,
+                H-E-B may be temporarily blocking automated sessions — wait a minute and retry.
+              </p>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Store */}
-      <div className="mt-6 rounded-lg border border-card-border bg-card p-6">
-        <div className="flex items-center justify-between">
+      <Card className="mt-6">
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Store className="h-5 w-5 text-muted" />
             <div>
-              <p className="text-sm font-medium">{storeName}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">{storeName}</p>
+                {status && !status.storeConfigured && <Badge color="warning">Default</Badge>}
+                {status?.storeConfigured && <Badge color="success">Selected</Badge>}
+              </div>
               {status?.store?.address ? (
                 <p className="text-xs text-muted">{status.store.address}</p>
               ) : (
@@ -248,7 +278,7 @@ export default function HebSettingsPage() {
           </div>
           <button
             onClick={() => setShowStoreSearch(!showStoreSearch)}
-            className="text-xs text-muted transition-colors hover:text-foreground"
+            className="shrink-0 text-xs text-muted transition-colors hover:text-foreground"
           >
             {showStoreSearch ? "Cancel" : "Change store"}
           </button>
@@ -257,25 +287,22 @@ export default function HebSettingsPage() {
         {showStoreSearch && (
           <div className="mt-4">
             <div className="flex gap-2">
-              <input
+              <Input
                 type="text"
                 placeholder="Search by zip code or city..."
                 value={storeQuery}
                 onChange={(e) => setStoreQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleStoreSearch()}
-                className="flex-1 rounded-lg border border-input-border bg-background px-4 py-2 text-sm focus:border-accent focus:outline-none"
+                className="flex-1"
               />
-              <button
+              <Button
                 onClick={handleStoreSearch}
-                disabled={searchingStores || !storeQuery.trim()}
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                loading={searchingStores}
+                disabled={!storeQuery.trim()}
+                className="shrink-0"
               >
-                {searchingStores ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Search"
-                )}
-              </button>
+                Search
+              </Button>
             </div>
 
             {storeResults.length > 0 && (
@@ -296,18 +323,28 @@ export default function HebSettingsPage() {
                 ))}
               </div>
             )}
+
+            {searched && !searchingStores && storeResults.length === 0 && (
+              <div className="mt-3">
+                <EmptyState
+                  icon={Search}
+                  title={`No stores found for “${lastSearchedQuery}”`}
+                  description="Try a different zip code or city."
+                />
+              </div>
+            )}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* This Week's Deals */}
-      <div className="mt-6 rounded-xl border border-card-border bg-card p-6">
+      <Card className="mt-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Newspaper className="h-5 w-5 text-warning" />
             <div>
               <p className="font-medium">
-                {weeklyAd?.flyerName ?? "This Week\u2019s Deals"}
+                {weeklyAd?.flyerName ?? "This Week’s Deals"}
               </p>
               {weeklyAd && (
                 <p className="text-xs text-muted">
@@ -330,7 +367,7 @@ export default function HebSettingsPage() {
 
         {!loadingAd && !weeklyAd && (
           <p className="mt-4 text-sm text-muted">
-            Could not load weekly deals.
+            Could not load weekly deals. Refresh your session and try again.
           </p>
         )}
 
@@ -338,13 +375,13 @@ export default function HebSettingsPage() {
           <>
             <div className="mt-4 flex gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                <input
+                <Search className="absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted" />
+                <Input
                   type="text"
                   placeholder="Filter deals..."
                   value={dealFilter}
                   onChange={(e) => setDealFilter(e.target.value)}
-                  className="w-full rounded-lg border border-input-border bg-background py-2 pl-9 pr-4 text-sm focus:border-accent focus:outline-none"
+                  className="pl-9"
                 />
               </div>
               <button
@@ -374,17 +411,17 @@ export default function HebSettingsPage() {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={item.imageUrl}
-                        alt={item.name}
+                        alt={decodeHtmlEntities(item.name)}
                         className="max-h-full max-w-full object-contain"
                       />
                     </div>
                   )}
                   <div className="flex flex-1 flex-col justify-center min-w-0">
                     <p className="text-sm font-medium text-foreground">
-                      {item.name}
+                      {decodeHtmlEntities(item.name)}
                     </p>
                     {item.brand && (
-                      <p className="mt-0.5 text-xs text-muted">{item.brand}</p>
+                      <p className="mt-0.5 text-xs text-muted">{decodeHtmlEntities(item.brand)}</p>
                     )}
                     <div className="mt-2">
                       {item.price && (
@@ -414,17 +451,17 @@ export default function HebSettingsPage() {
             )}
           </>
         )}
-      </div>
+      </Card>
 
       {/* Info */}
-      <div className="mt-6 rounded-lg border border-card-border bg-card p-6 text-sm text-muted">
+      <Card className="mt-6 text-sm text-muted">
         <p className="font-medium text-foreground">How it works</p>
         <ul className="mt-2 list-inside list-disc space-y-1">
           <li>
             Sessions are established by launching a headless Chrome browser that
             visits heb.com
           </li>
-          <li>No HEB account or login is required</li>
+          <li>No H-E-B account or login is required</li>
           <li>Sessions expire after about 10 minutes</li>
           <li>
             Sessions are auto-refreshed when you enrich a shopping list
@@ -433,7 +470,7 @@ export default function HebSettingsPage() {
             Product prices and availability are specific to your selected store
           </li>
         </ul>
-      </div>
+      </Card>
     </div>
   );
 }

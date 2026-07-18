@@ -58,13 +58,13 @@ export function ImportProgress({
                 <Loader2 className="h-4 w-4 animate-spin text-accent" />
               )}
               {item.status === "done" && (
-                <Check className="h-4 w-4 text-green-500" />
+                <Check className="h-4 w-4 text-success" />
               )}
               {item.status === "skipped" && (
-                <SkipForward className="h-4 w-4 text-yellow-500" />
+                <SkipForward className="h-4 w-4 text-warning" />
               )}
               {item.status === "error" && (
-                <X className="h-4 w-4 text-red-500" />
+                <X className="h-4 w-4 text-danger" />
               )}
             </div>
 
@@ -79,7 +79,7 @@ export function ImportProgress({
                 </div>
               )}
               {item.reason && (
-                <div className="text-xs text-yellow-600 dark:text-yellow-400">
+                <div className="text-xs text-warning">
                   {item.reason}
                 </div>
               )}

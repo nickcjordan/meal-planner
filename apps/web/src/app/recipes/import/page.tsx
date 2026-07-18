@@ -16,6 +16,7 @@ import { BulkImportForm } from "@/components/BulkImportForm";
 import { JsonImportForm } from "@/components/JsonImportForm";
 import { TextImportForm } from "@/components/TextImportForm";
 import { ApiSearchForm } from "@/components/ApiSearchForm";
+import { PageHeader } from "@/components/ui";
 
 type ImportMethod = "url" | "bulk" | "photo" | "text" | "api" | "json" | "heb";
 
@@ -92,9 +93,7 @@ export default function RecipeImportPage() {
         <ArrowLeft className="h-4 w-4" /> Back to recipes
       </Link>
 
-      <h1 className="mb-6 text-2xl font-bold text-foreground">
-        Import Recipes
-      </h1>
+      <PageHeader title="Import Recipes" className="mb-6" />
 
       {/* Method selector */}
       <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

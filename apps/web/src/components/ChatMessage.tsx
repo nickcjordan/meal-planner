@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
 }
+
+// The stream constructs failure messages with these exact prefixes; treat them
+// as a distinct, clearly-styled error bubble rather than a normal reply.
+const ERROR_PREFIX = /^(Error|Connection error):\s*/;
 
 function renderMarkdown(text: string) {
   // Split on bold (**text**) and links ([text](url)) patterns
@@ -55,6 +60,20 @@ export function ChatMessage({ role, content }: ChatMessageProps) {
       <div className="flex justify-end">
         <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accent px-4 py-3 text-sm text-white">
           {content}
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant error messages get a distinct danger-tinted bubble with an icon.
+  if (ERROR_PREFIX.test(content)) {
+    return (
+      <div className="flex justify-start">
+        <div className="flex max-w-[80%] items-start gap-2 rounded-2xl rounded-bl-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger leading-relaxed">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="whitespace-pre-wrap break-words">
+            {content.replace(ERROR_PREFIX, "")}
+          </span>
         </div>
       </div>
     );

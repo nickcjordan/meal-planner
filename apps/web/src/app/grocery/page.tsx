@@ -1,9 +1,12 @@
+import { PageHeader } from "@/components/ui";
 import { GroceryListView } from "@/components/GroceryListView";
 
 export default function GroceryPage() {
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-foreground">Grocery List</h1>
+      <div className="mx-auto max-w-4xl">
+        <PageHeader title="Grocery List" className="mb-6" />
+      </div>
       <GroceryListView />
     </div>
   );

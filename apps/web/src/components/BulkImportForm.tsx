@@ -2,9 +2,10 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { List, Globe, Loader2, AlertCircle, Save } from "lucide-react";
+import { List, Globe, AlertCircle, Save } from "lucide-react";
 import { ImportProgress } from "./ImportProgress";
 import { ImportPreview } from "./ImportPreview";
+import { Button, Input, Textarea } from "@/components/ui";
 import type { Recipe } from "@meal-planner/types";
 
 interface BulkResult {
@@ -282,9 +283,6 @@ export function BulkImportForm() {
     });
   }
 
-  const inputClass =
-    "block w-full rounded-lg border border-input-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
-
   return (
     <div className="space-y-6">
       {/* Mode toggle */}
@@ -314,47 +312,32 @@ export function BulkImportForm() {
       {/* Input form */}
       <form onSubmit={handleSubmit} className="space-y-3">
         {mode === "urls" ? (
-          <textarea
+          <Textarea
             value={urlText}
             onChange={(e) => setUrlText(e.target.value)}
             placeholder="Paste recipe URLs, one per line..."
             rows={6}
-            className={inputClass}
             required
           />
         ) : (
-          <input
+          <Input
             type="url"
             value={blogUrl}
             onChange={(e) => setBlogUrl(e.target.value)}
             placeholder="Paste a blog or recipe index page URL..."
-            className={inputClass}
             required
           />
         )}
-        <button
-          type="submit"
-          disabled={loading}
-          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Importing...
-            </>
-          ) : mode === "urls" ? (
-            "Import URLs"
-          ) : (
-            "Discover & Import"
-          )}
-        </button>
+        <Button type="submit" variant="primary" size="lg" loading={loading}>
+          {loading ? "Importing…" : mode === "urls" ? "Import URLs" : "Discover & Import"}
+        </Button>
       </form>
 
       {/* Error */}
       {error && (
-        <div className="flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/10 p-4">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+          <p className="text-sm text-danger">{error}</p>
         </div>
       )}
 
@@ -421,29 +404,28 @@ export function BulkImportForm() {
             ))}
           </div>
 
-          <button
+          <Button
+            variant="primary"
+            size="lg"
             onClick={handleSaveSelected}
-            disabled={saving || selected.size === 0}
-            className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            loading={saving}
+            disabled={selected.size === 0}
           >
             {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
-              </>
+              "Saving…"
             ) : (
               <>
                 <Save className="h-4 w-4" />
                 Save {selected.size} Recipe{selected.size === 1 ? "" : "s"}
               </>
             )}
-          </button>
+          </Button>
         </div>
       )}
 
       {/* Success */}
       {saved && (
-        <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-600 dark:text-green-400">
+        <div className="rounded-lg border border-success/30 bg-success/10 p-4 text-sm text-success">
           Recipes saved successfully!{" "}
           <Link href="/recipes" className="font-medium underline">
             View recipes
@@ -456,8 +438,8 @@ export function BulkImportForm() {
         <div
           className={`space-y-2 rounded-lg border p-4 text-sm ${
             saveSummary.imported > 0
-              ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-              : "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"
+              ? "border-warning/30 bg-warning/10 text-warning"
+              : "border-danger/30 bg-danger/10 text-danger"
           }`}
         >
           <div className="flex items-start gap-2">

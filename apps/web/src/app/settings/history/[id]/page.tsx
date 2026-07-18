@@ -1,10 +1,82 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Check } from "lucide-react";
 import { getSession, getFeedbackForSession, getRecipe, getShoppingList } from "@meal-planner/db";
+import type { ShoppingList } from "@meal-planner/types";
 import { WeekCalendar } from "@/components/WeekCalendar";
 import { StarRating } from "@/components/StarRating";
+import { HebProductInfo } from "@/components/HebProductInfo";
+import { PageHeader, Card, Badge, Button } from "@/components/ui";
+import { CATEGORY_ICONS, groupByCategory } from "@/lib/categories";
 import { formatWeekOf } from "@/lib/week";
+
+const STATUS_COLOR = {
+  draft: "neutral",
+  confirmed: "accent",
+  completed: "success",
+} as const;
+
+function ShoppingSnapshot({ list }: { list: ShoppingList }) {
+  const groups = groupByCategory(list.items);
+  const checkedCount = list.items.filter((i) => i.checked).length;
+  const totalCount = list.items.length;
+
+  return (
+    <section className="mt-8">
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-foreground">Shopping list snapshot</h2>
+        <Badge color="neutral">
+          {checkedCount}/{totalCount} checked
+        </Badge>
+      </div>
+      <p className="mb-4 text-xs text-muted">
+        A historical record of this week&apos;s shopping list. Read-only.
+      </p>
+
+      <div className="space-y-4">
+        {Array.from(groups.entries()).map(([category, catItems]) => (
+          <Card key={category} padding="none" className="overflow-hidden">
+            <div className="flex items-center gap-2 border-b border-card-border bg-tag-bg/30 px-5 py-3">
+              <span className="text-base">{CATEGORY_ICONS[category.toLowerCase()] ?? "🛒"}</span>
+              <h3 className="text-sm font-semibold capitalize text-foreground">{category}</h3>
+              <span className="text-xs text-muted">
+                {catItems.filter((i) => i.checked).length}/{catItems.length}
+              </span>
+            </div>
+            <div className="divide-y divide-card-border">
+              {catItems.map((item, i) => (
+                <div
+                  key={`${item.name}-${item.unit}-${i}`}
+                  className={`flex items-start gap-3 px-5 py-3 ${item.checked ? "opacity-50" : ""}`}
+                >
+                  <span
+                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
+                      item.checked ? "border-accent bg-accent text-white" : "border-input-border"
+                    }`}
+                    aria-label={item.checked ? "Checked" : "Unchecked"}
+                  >
+                    {item.checked && <Check className="h-3 w-3" strokeWidth={3} />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className={`flex items-center gap-2 ${item.checked ? "line-through" : ""}`}>
+                      <span className="text-sm font-medium text-foreground">{item.name}</span>
+                      {item.quantity > 0 && (
+                        <span className="text-xs text-muted">
+                          {item.quantity} {item.unit}
+                        </span>
+                      )}
+                    </div>
+                    {item.heb && <HebProductInfo heb={item.heb} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export default async function SessionDetailPage({
   params,
@@ -44,33 +116,26 @@ export default async function SessionDetailPage({
         <ArrowLeft className="h-4 w-4" /> Back to history
       </Link>
 
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Week of {weekLabel}</h1>
-          <p className="mt-1 text-sm text-muted">
-            {session.meals.length} meals &middot; {session.status}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {session.status === "confirmed" && (
-            <Link
-              href={`/review/${session.id}`}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
-            >
-              Review Meals
-            </Link>
-          )}
-          <Link
-            href={`/shopping/${session.id}`}
-            className="rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-muted hover:bg-tag-bg hover:text-foreground"
-          >
-            Shopping List
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title={`Week of ${weekLabel}`}
+        subtitle={`${session.meals.length} meal${session.meals.length !== 1 ? "s" : ""}`}
+        className="mb-6"
+        actions={
+          <>
+            <Badge color={STATUS_COLOR[session.status as keyof typeof STATUS_COLOR] ?? "neutral"}>
+              {session.status}
+            </Badge>
+            {session.status === "confirmed" && (
+              <Link href={`/review/${session.id}`}>
+                <Button size="sm">Review Meals</Button>
+              </Link>
+            )}
+          </>
+        }
+      />
 
       {session.summary && (
-        <p className="mb-6 text-sm text-muted leading-relaxed">{session.summary}</p>
+        <p className="mb-6 text-sm leading-relaxed text-muted">{session.summary}</p>
       )}
 
       <WeekCalendar session={session} recipes={recipes} />
@@ -80,34 +145,22 @@ export default async function SessionDetailPage({
           <h2 className="mb-4 text-lg font-semibold text-foreground">Feedback</h2>
           <div className="space-y-3">
             {feedback.map((fb) => (
-              <div
-                key={fb.recipeId}
-                className="flex items-center justify-between rounded-xl border border-card-border bg-card p-4"
-              >
+              <Card key={fb.recipeId} padding="sm" className="flex items-center justify-between">
                 <div>
                   <span className="text-sm font-medium text-foreground">
                     {recipes[fb.recipeId] ?? fb.recipeId}
                   </span>
-                  <span className="ml-2 text-xs text-muted">
-                    {fb.wasMade ? "Made" : "Skipped"}
-                  </span>
-                  {fb.comment && (
-                    <p className="mt-1 text-sm text-muted">{fb.comment}</p>
-                  )}
+                  <span className="ml-2 text-xs text-muted">{fb.wasMade ? "Made" : "Skipped"}</span>
+                  {fb.comment && <p className="mt-1 text-sm text-muted">{fb.comment}</p>}
                 </div>
                 {fb.wasMade && <StarRating value={fb.rating} readonly />}
-              </div>
+              </Card>
             ))}
           </div>
         </div>
       )}
 
-      {shoppingList && (
-        <div className="mt-6 text-sm text-muted">
-          Shopping list: {shoppingList.items.filter((i) => i.checked).length}/
-          {shoppingList.items.length} items checked
-        </div>
-      )}
+      {shoppingList && shoppingList.items.length > 0 && <ShoppingSnapshot list={shoppingList} />}
     </div>
   );
 }

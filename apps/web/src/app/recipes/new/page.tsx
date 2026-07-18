@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { RecipeForm } from "@/components/RecipeForm";
+import { PageHeader } from "@/components/ui";
 
 export default function NewRecipePage() {
   return (
@@ -11,7 +12,7 @@ export default function NewRecipePage() {
       >
         <ArrowLeft className="h-4 w-4" /> Back to recipes
       </Link>
-      <h1 className="mb-6 text-2xl font-bold text-foreground">Add New Recipe</h1>
+      <PageHeader title="Add New Recipe" className="mb-6" />
       <div className="rounded-xl border border-card-border bg-card p-8 shadow-sm">
         <RecipeForm />
       </div>

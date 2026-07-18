@@ -1,33 +1,68 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { CalendarClock, AlertTriangle } from "lucide-react";
 import type { PlanningSession } from "@meal-planner/types";
 import { SessionCard } from "@/components/SessionCard";
+import { PageHeader, EmptyState, Button, ListSkeleton } from "@/components/ui";
+import { tryApi, type ApiResult } from "@/lib/api";
 
 export default function HistoryPage() {
   const [sessions, setSessions] = useState<PlanningSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/sessions?limit=20")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setSessions(data);
-      })
-      .finally(() => setLoading(false));
+  // setState lives in the .then continuation (not the synchronous effect body)
+  // so the mount fetch doesn't trigger cascading renders.
+  const applyResult = useCallback((res: ApiResult<PlanningSession[]>) => {
+    if (res.ok) {
+      setSessions(Array.isArray(res.data) ? res.data : []);
+      setError(null);
+    } else {
+      setError(res.error.message);
+    }
+    setLoading(false);
   }, []);
 
-  if (loading) {
-    return <div className="py-16 text-center text-muted">Loading history...</div>;
+  useEffect(() => {
+    let active = true;
+    void tryApi<PlanningSession[]>("/api/sessions?limit=20").then((res) => {
+      if (active) applyResult(res);
+    });
+    return () => {
+      active = false;
+    };
+  }, [applyResult]);
+
+  function retry() {
+    setLoading(true);
+    setError(null);
+    void tryApi<PlanningSession[]>("/api/sessions?limit=20").then(applyResult);
   }
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-foreground">Meal Plan History</h1>
-      {sessions.length === 0 ? (
-        <p className="py-12 text-center text-muted">
-          No planning sessions yet. Start one from the Plan page.
-        </p>
+      <PageHeader title="Meal Plan History" className="mb-6" />
+
+      {loading ? (
+        <ListSkeleton rows={5} />
+      ) : error ? (
+        <EmptyState
+          icon={AlertTriangle}
+          title="Couldn't load your history"
+          description={error}
+          action={
+            <Button variant="secondary" onClick={retry}>
+              Retry
+            </Button>
+          }
+        />
+      ) : sessions.length === 0 ? (
+        <EmptyState
+          icon={CalendarClock}
+          title="No planning sessions yet"
+          description="Plans you confirm will show up here. Start one from the Plan page."
+        />
       ) : (
         <div className="space-y-3">
           {sessions.map((session) => (

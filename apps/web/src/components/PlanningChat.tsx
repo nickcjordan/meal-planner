@@ -7,7 +7,9 @@ import { ChatMessage } from "./ChatMessage";
 import { MealPlanPanel } from "./MealPlanPanel";
 import { IngredientReviewPanel } from "./IngredientReviewPanel";
 import { RecipeModal } from "./RecipeModal";
+import { ResumeBanner } from "./ResumeBanner";
 import { useToast } from "./Toast";
+import { Button } from "@/components/ui";
 import { getToolLabel, isWriteTool } from "@/lib/chat";
 import { formatWeekOf } from "@/lib/week";
 import type { Message, ToolActivity } from "@/lib/chat";
@@ -19,6 +21,8 @@ interface SessionState {
   proposal: MealProposal | null;
   weekOf: string;
   confirmed: boolean;
+  /** ISO timestamp of the last persist — powers the resume banner's "from X ago". */
+  savedAt?: string;
 }
 
 const STORAGE_KEY = "meal-planner-active-session";
@@ -37,7 +41,8 @@ function loadSession(weekOf: string): SessionState | null {
 
 function saveSession(state: SessionState) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // Stamp every persist so a restored session can report how stale it is.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, savedAt: new Date().toISOString() }));
   } catch {
     // storage full or unavailable
   }
@@ -70,6 +75,8 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
   const [excludedIngredients, setExcludedIngredients] = useState<Set<string>>(new Set());
   const [alternatives, setAlternatives] = useState<MealAlternativesPayload | null>(null);
   const [respinLoading, setRespinLoading] = useState(false);
+  // Set when an in-progress plan is restored from localStorage → shows a banner.
+  const [resumeInfo, setResumeInfo] = useState<{ savedAt: string | null } | null>(null);
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
@@ -114,6 +121,10 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
       setMessages(saved.messages);
       setProposal(saved.proposal);
       setConfirmed(saved.confirmed);
+      // Surface a resume notice for an in-progress (unconfirmed) plan with content.
+      if (!saved.confirmed && (saved.messages.length > 0 || saved.proposal)) {
+        setResumeInfo({ savedAt: saved.savedAt ?? null });
+      }
     }
   }, [weekOf]);
 
@@ -419,6 +430,7 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
 
   function handleSaved() {
     setConfirmed(true);
+    setResumeInfo(null);
     clearSession();
   }
 
@@ -430,6 +442,7 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
     setConfirmed(false);
     setExcludedIngredients(new Set());
     setInput("");
+    setResumeInfo(null);
   }
 
   const weekLabel = formatWeekOf(weekOf, {
@@ -441,26 +454,26 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
   const hasStarted = messages.length > 0 || streaming;
 
   // Before a proposal exists, chat is full-width centered
-  if (!proposal) {
-    return (
-      <>
-        <div className="mx-auto flex h-full max-w-3xl flex-col rounded-xl border border-card-border bg-card shadow-sm">
-          <div className={`flex-1 p-6 space-y-4 ${hasStarted ? "overflow-y-auto" : "overflow-hidden"}`}>
+  const preSessionContent = (
+        <div className="mx-auto flex min-h-[70vh] w-full max-w-3xl flex-col rounded-xl border border-card-border bg-card shadow-sm lg:h-full lg:min-h-0">
+          <div className="flex-1 space-y-4 overflow-y-auto p-6">
             {!hasStarted && (
-              <div className="flex h-full flex-col items-center justify-center gap-6">
-                <div className="text-center">
-                  <h1 className="text-2xl font-bold text-foreground">Plan Your Week</h1>
-                  <p className="mt-2 text-muted text-sm">
+              <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
+                <div>
+                  <ChefHat className="mx-auto h-12 w-12 text-muted/30" />
+                  <h1 className="mt-4 text-2xl font-bold text-foreground">Plan Your Week</h1>
+                  <p className="mt-1 text-muted text-sm">
                     Week of {weekLabel}
                   </p>
                 </div>
                 <div className="flex flex-col items-center gap-3">
-                  <button
+                  <Button
+                    variant="primary"
+                    size="lg"
                     onClick={() => sendMessage("Plan my dinners for this week. Surprise me!", false)}
-                    className="flex items-center gap-2 rounded-lg bg-accent px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
                   >
                     <Play className="h-4 w-4" /> Start Planning
-                  </button>
+                  </Button>
                   <p className="text-xs text-muted">Or type preferences below</p>
                 </div>
 
@@ -472,7 +485,7 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
                     </div>
                     <ul className="space-y-0.5 ml-5 list-disc">
                       {familyContext.members.filter((m) => !m.isActive).map((m) => (
-                        <li key={m.name} className="text-amber-500">{m.name} is marked away this week</li>
+                        <li key={m.name} className="text-warning">{m.name} is marked away this week</li>
                       ))}
                       {familyContext.adaptations.filter((a) => a.isActive).map((a) => (
                         <li key={a.name}>{a.memberName}: {a.name} active</li>
@@ -500,7 +513,7 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
                     {toolActivities.map((activity, i) => (
                       <div key={i} className="flex items-center gap-2 text-xs text-muted">
                         {activity.durationMs != null ? (
-                          <Check className="h-3.5 w-3.5 text-green-500/70" />
+                          <Check className="h-3.5 w-3.5 text-success/70" />
                         ) : (
                           <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
                         )}
@@ -518,11 +531,11 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
                       {heartbeatTick > 0 && (
                         <span
                           key={heartbeatTick}
-                          className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                          className="absolute inline-flex h-full w-full rounded-full bg-success opacity-75"
                           style={{ animation: "ping 1s cubic-bezier(0, 0, 0.2, 1) 1 forwards" }}
                         />
                       )}
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500/50" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-success/50" />
                     </span>
                     <span className="text-sm text-muted">{statusMessage ?? "Thinking..."}</span>
                   </div>
@@ -554,18 +567,13 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
             </div>
           </div>
         </div>
-
-        {modalRecipeId && <RecipeModal recipeId={modalRecipeId} onClose={() => setModalRecipeId(null)} />}
-      </>
-    );
-  }
+  );
 
   // After a proposal exists: split layout — chat sidebar left, plan hero right
-  return (
-    <>
-      <div className="flex h-full gap-4">
+  const proposalContent = proposal ? (
+      <div className="flex h-full flex-col gap-4 lg:flex-row">
         {/* Chat sidebar */}
-        <div className="flex w-80 shrink-0 flex-col rounded-xl border border-card-border bg-card shadow-sm xl:w-96">
+        <div className="flex w-full flex-col rounded-xl border border-card-border bg-card shadow-sm max-lg:h-[55vh] lg:w-80 lg:shrink-0 xl:w-96">
           <div className="border-b border-card-border px-4 py-3">
             <h2 className="text-sm font-semibold text-foreground">Chat</h2>
           </div>
@@ -584,7 +592,7 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
                     {toolActivities.map((activity, i) => (
                       <div key={i} className="flex items-center gap-1.5 text-xs text-muted">
                         {activity.durationMs != null ? (
-                          <Check className="h-3 w-3 text-green-500/70" />
+                          <Check className="h-3 w-3 text-success/70" />
                         ) : (
                           <Loader2 className="h-3 w-3 animate-spin text-accent" />
                         )}
@@ -602,11 +610,11 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
                       {heartbeatTick > 0 && (
                         <span
                           key={heartbeatTick}
-                          className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                          className="absolute inline-flex h-full w-full rounded-full bg-success opacity-75"
                           style={{ animation: "ping 1s cubic-bezier(0, 0, 0.2, 1) 1 forwards" }}
                         />
                       )}
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500/50" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-success/50" />
                     </span>
                     <span>{statusMessage ?? "Thinking..."}</span>
                   </div>
@@ -670,7 +678,7 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
         </div>
 
         {/* Meal plan hero */}
-        <div className="flex-1 min-w-0 rounded-xl border border-card-border bg-card shadow-sm">
+        <div className="min-w-0 flex-1 rounded-xl border border-card-border bg-card shadow-sm max-lg:flex-none">
           <MealPlanPanel
             proposal={proposal}
             weekOf={weekOf}
@@ -702,13 +710,29 @@ export function PlanningChat({ weekOf }: PlanningChatProps) {
         </div>
 
         {/* Ingredient review panel */}
-        <div className="w-72 shrink-0 rounded-xl border border-card-border bg-card shadow-sm">
+        <div className="w-full rounded-xl border border-card-border bg-card shadow-sm lg:w-72 lg:shrink-0">
           <IngredientReviewPanel
             proposal={proposal}
             excludedIngredients={excludedIngredients}
             onToggleIngredient={handleToggleIngredient}
             disabled={confirmed}
           />
+        </div>
+      </div>
+  ) : null;
+
+  return (
+    <>
+      <div className="flex h-full flex-col gap-3 max-lg:h-auto">
+        {resumeInfo && !confirmed && (
+          <ResumeBanner
+            savedAt={resumeInfo.savedAt}
+            onDiscard={handleStartNew}
+            onDismiss={() => setResumeInfo(null)}
+          />
+        )}
+        <div className="min-h-0 flex-1 max-lg:flex-none">
+          {proposal ? proposalContent : preSessionContent}
         </div>
       </div>
 

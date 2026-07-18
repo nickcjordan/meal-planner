@@ -1,17 +1,15 @@
 "use client";
 
 import { PantrySection } from "@/components/PantrySection";
+import { PageHeader } from "@/components/ui";
 
 export default function KitchenPage() {
   return (
     <div className="mx-auto max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">My Kitchen</h1>
-        <p className="mt-1 text-sm text-muted">
-          Items you always have on hand. These are excluded from shopping lists
-          because Claude knows you already have them.
-        </p>
-      </div>
+      <PageHeader
+        title="My Kitchen"
+        subtitle="Items you always have on hand. These are excluded from shopping lists because Claude knows you already have them."
+      />
 
       <div className="mt-6">
         <PantrySection />

@@ -15,6 +15,8 @@ const NAV_LINKS = [
 const SETTINGS_LINKS = [
   { href: "/settings/kitchen", label: "My Kitchen" },
   { href: "/settings/recurring", label: "Recurring" },
+  { href: "/settings/sides", label: "Sides" },
+  { href: "/settings/swaps", label: "Swaps" },
   { href: "/settings/preferences", label: "Family" },
   { href: "/settings/heb", label: "H-E-B" },
   { href: "/settings/history", label: "History" },
@@ -81,7 +83,7 @@ export function NavBar() {
         <div className="flex items-center gap-2">
           {/* Settings link — desktop */}
           <Link
-            href="/settings/kitchen"
+            href="/settings"
             className={`hidden rounded-lg p-2 transition-colors md:block ${
               isSettingsActive(pathname)
                 ? "bg-tag-bg text-foreground"
@@ -122,6 +124,16 @@ export function NavBar() {
               </Link>
             ))}
             <div className="mx-3 my-1 border-t border-card-border" />
+            <Link
+              href="/settings"
+              className={`rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                pathname === "/settings"
+                  ? "bg-tag-bg text-foreground"
+                  : "text-muted hover:bg-tag-bg hover:text-foreground"
+              }`}
+            >
+              All Settings
+            </Link>
             {SETTINGS_LINKS.map((link) => (
               <Link
                 key={link.href}

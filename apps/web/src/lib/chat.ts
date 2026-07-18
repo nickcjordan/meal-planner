@@ -93,3 +93,24 @@ const WRITE_TOOLS = new Set([
 export function isWriteTool(toolName: string): boolean {
   return WRITE_TOOLS.has(stripMcpPrefix(toolName));
 }
+
+/**
+ * Compact "time ago" phrasing for a stored ISO timestamp — used by the plan
+ * resume banner. Returns "just now", "5 minutes ago", "3 hours ago",
+ * "yesterday", or "3 days ago". Falls back to "" for a missing/invalid input.
+ */
+export function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "";
+  const diffMs = Date.now() - then;
+  if (diffMs < 0) return "just now";
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "yesterday";
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}

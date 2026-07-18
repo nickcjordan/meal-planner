@@ -11,7 +11,6 @@ import {
   Loader2,
   Sparkles,
   Upload,
-  Check,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
@@ -19,6 +18,13 @@ import { CATEGORY_ORDER, CATEGORY_ICONS, groupByCategory } from "@/lib/categorie
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ListSkeleton } from "@/components/Skeleton";
+import { Button, Input, Textarea, EmptyState } from "@/components/ui";
+import { api, tryApi, ApiError } from "@/lib/api";
+
+// Token-styled raw <select> for the two inline, content-width selects that sit
+// in flex rows (the Select primitive is w-full, which would break those rows).
+const inlineSelectClass =
+  "cursor-pointer rounded-lg border border-input-border bg-input-bg text-sm text-foreground transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
 
 interface CategorizationResult {
   input: string;
@@ -76,21 +82,29 @@ export function PantrySection() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch("/api/pantry")
-      .then((r) => r.json())
-      .then((data) => {
+    (async () => {
+      try {
+        const data = await api<PantryItem[]>("/api/pantry");
         if (Array.isArray(data)) setItems(data);
-      })
-      .finally(() => setLoading(false));
+      } catch (err) {
+        toast(err instanceof ApiError ? err.message : "Failed to load pantry", "error");
+      } finally {
+        setLoading(false);
+      }
+    })();
 
-    setSuggestionsLoading(true);
-    fetch("/api/pantry/suggestions")
-      .then((r) => r.json())
-      .then((data) => {
+    (async () => {
+      setSuggestionsLoading(true);
+      try {
+        const data = await api<PantrySuggestion[]>("/api/pantry/suggestions");
         if (Array.isArray(data)) setSuggestions(data);
-      })
-      .catch(() => {})
-      .finally(() => setSuggestionsLoading(false));
+      } catch {
+        // Non-critical — the suggestions strip just won't render.
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const categorizeInput = useCallback(
@@ -113,21 +127,19 @@ export function PantrySection() {
 
       setCategorizing(true);
       try {
-        const res = await fetch("/api/pantry/categorize", {
+        // Non-critical autocomplete — a failure just leaves manual category choice.
+        const res = await tryApi<{ results?: CategorizationResult[] }>("/api/pantry/categorize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ names: [trimmed] }),
         });
         if (res.ok) {
-          const data = await res.json();
-          const result = data.results?.[0] as CategorizationResult | undefined;
+          const result = res.data.results?.[0];
           if (result) {
             setSuggestion(result);
             setCategory(result.category);
           }
         }
-      } catch {
-        // Silently fail — user can still pick manually
       } finally {
         setCategorizing(false);
       }
@@ -153,7 +165,7 @@ export function PantrySection() {
 
     setAdding(true);
     try {
-      const res = await fetch("/api/pantry", {
+      const res = await tryApi<PantryItem>("/api/pantry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -163,32 +175,40 @@ export function PantrySection() {
         }),
       });
 
-      if (res.status === 409) {
-        const data = await res.json();
-        setDuplicateWarning(`"${data.existing?.name}" is already in your pantry`);
+      if (!res.ok) {
+        if (res.error.status === 409) {
+          const existing = (res.error.body as { existing?: { name?: string } } | undefined)?.existing;
+          setDuplicateWarning(`"${existing?.name}" is already in your pantry`);
+        } else {
+          toast(res.error.message, "error");
+        }
         return;
       }
 
-      if (res.ok) {
-        const item = await res.json();
-        setItems((prev) => [...prev, item]);
-        setName("");
-        setSuggestion(null);
-        setCategory("pantry");
-        setDuplicateWarning(null);
-        inputRef.current?.focus();
-        toast("Added to pantry");
-      }
+      setItems((prev) => [...prev, res.data]);
+      setName("");
+      setSuggestion(null);
+      setCategory("pantry");
+      setDuplicateWarning(null);
+      inputRef.current?.focus();
+      toast("Added to pantry");
     } finally {
       setAdding(false);
     }
   }
 
   async function removeItem(item: PantryItem) {
+    const prevItems = items;
+    // Optimistic remove, rolled back if the server rejects the delete.
     setItems((prev) => prev.filter((i) => i.id !== item.id));
-    await fetch(`/api/pantry/${encodeURIComponent(item.id)}`, { method: "DELETE" });
     setDeleteTarget(null);
-    toast("Removed from pantry");
+    try {
+      await api(`/api/pantry/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+      toast("Removed from pantry");
+    } catch (err) {
+      setItems(prevItems);
+      toast(err instanceof ApiError ? err.message : "Failed to remove item", "error");
+    }
   }
 
   function startEditing(item: PantryItem) {
@@ -202,7 +222,7 @@ export function PantrySection() {
     if (!editingId || !editName.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/pantry/${encodeURIComponent(editingId)}`, {
+      const updated = await api<PantryItem>(`/api/pantry/${encodeURIComponent(editingId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -211,12 +231,11 @@ export function PantrySection() {
           notes: editNotes || undefined,
         }),
       });
-      if (res.ok) {
-        const updated = await res.json();
-        setItems((prev) => prev.map((i) => (i.id === editingId ? updated : i)));
-        setEditingId(null);
-        toast("Item updated");
-      }
+      setItems((prev) => prev.map((i) => (i.id === editingId ? updated : i)));
+      setEditingId(null);
+      toast("Item updated");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to update item", "error");
     } finally {
       setSaving(false);
     }
@@ -232,21 +251,20 @@ export function PantrySection() {
 
     setBulkLoading(true);
     try {
-      const res = await fetch("/api/pantry/categorize", {
+      const data = await api<{ results: CategorizationResult[] }>("/api/pantry/categorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ names }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        const existingNames = new Set(items.map((i) => i.normalizedName));
-        setBulkPreview(
-          (data.results as CategorizationResult[]).map((r) => ({
-            ...r,
-            selected: !existingNames.has(r.displayName.toLowerCase()),
-          })),
-        );
-      }
+      const existingNames = new Set(items.map((i) => i.normalizedName));
+      setBulkPreview(
+        data.results.map((r) => ({
+          ...r,
+          selected: !existingNames.has(r.displayName.toLowerCase()),
+        })),
+      );
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to categorize items", "error");
     } finally {
       setBulkLoading(false);
     }
@@ -259,26 +277,34 @@ export function PantrySection() {
 
     setBulkAdding(true);
     try {
-      const added: PantryItem[] = [];
-      for (const item of toAdd) {
-        const res = await fetch("/api/pantry", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: item.displayName,
-            category: item.category,
-            aliases: item.aliases,
+      const results = await Promise.all(
+        toAdd.map((item) =>
+          tryApi<PantryItem>("/api/pantry", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: item.displayName,
+              category: item.category,
+              aliases: item.aliases,
+            }),
           }),
-        });
-        if (res.ok) {
-          added.push(await res.json());
-        }
+        ),
+      );
+      const added: PantryItem[] = [];
+      let failed = 0;
+      for (const r of results) {
+        if (r.ok) added.push(r.data);
+        else failed++;
       }
-      setItems((prev) => [...prev, ...added]);
-      setBulkPreview(null);
-      setBulkText("");
-      setShowBulk(false);
-      toast(`Added ${added.length} item${added.length !== 1 ? "s" : ""} to pantry`);
+      if (added.length > 0) setItems((prev) => [...prev, ...added]);
+      if (failed === 0) {
+        setBulkPreview(null);
+        setBulkText("");
+        setShowBulk(false);
+        toast(`Added ${added.length} item${added.length !== 1 ? "s" : ""} to pantry`);
+      } else {
+        toast(`Added ${added.length}, ${failed} failed`, added.length > 0 ? "warning" : "error");
+      }
     } finally {
       setBulkAdding(false);
     }
@@ -294,16 +320,17 @@ export function PantrySection() {
   }
 
   async function addSuggestion(s: PantrySuggestion) {
-    const res = await fetch("/api/pantry", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: s.name, category: s.category }),
-    });
-    if (res.ok) {
-      const item = await res.json();
+    try {
+      const item = await api<PantryItem>("/api/pantry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: s.name, category: s.category }),
+      });
       setItems((prev) => [...prev, item]);
       setSuggestions((prev) => prev.filter((p) => p.name !== s.name));
       toast(`Added "${s.name}" to pantry`);
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to add item", "error");
     }
   }
 
@@ -329,26 +356,23 @@ export function PantrySection() {
     <div>
       {/* Header with bulk import button */}
       <div className="flex items-center justify-end">
-        <button
-          onClick={() => setShowBulk(!showBulk)}
-          className="flex shrink-0 items-center gap-2 rounded-lg border border-card-border px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-card hover:text-foreground"
-        >
+        <Button variant="secondary" onClick={() => setShowBulk(!showBulk)} className="shrink-0">
           <Upload className="h-4 w-4" />
           Bulk Import
-        </button>
+        </Button>
       </div>
 
       {/* Smart Add Form */}
       <form onSubmit={addItem} className="mt-4">
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <input
+            <Input
               ref={inputRef}
               type="text"
               value={name}
               onChange={(e) => handleNameChange(e.target.value)}
               placeholder="Type an item name (e.g. olive oil, chicken breast)"
-              className="w-full rounded-lg border border-input-border bg-card px-4 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              className="pr-10"
             />
             {categorizing && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -359,7 +383,7 @@ export function PantrySection() {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="rounded-lg border border-input-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            className={`${inlineSelectClass} px-3 py-2.5`}
           >
             {CATEGORIES.map((cat) => (
               <option key={cat} value={cat}>
@@ -367,18 +391,15 @@ export function PantrySection() {
               </option>
             ))}
           </select>
-          <button
+          <Button
             type="submit"
-            disabled={(!name.trim() && !suggestion) || adding || !!duplicateWarning}
-            className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            loading={adding}
+            disabled={(!name.trim() && !suggestion) || !!duplicateWarning}
+            className="shrink-0"
           >
-            {adding ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
+            <Plus className="h-4 w-4" />
             Add
-          </button>
+          </Button>
         </div>
 
         {suggestion && name.trim() && (
@@ -406,35 +427,31 @@ export function PantrySection() {
 
           {!bulkPreview ? (
             <>
-              <textarea
+              <Textarea
                 value={bulkText}
                 onChange={(e) => setBulkText(e.target.value)}
                 placeholder="salt, pepper, olive oil, flour, garlic, onion, butter, eggs..."
                 rows={3}
-                className="mt-3 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none"
+                className="mt-3"
               />
               <div className="mt-3 flex justify-end gap-2">
-                <button
+                <Button
+                  variant="secondary"
                   onClick={() => {
                     setShowBulk(false);
                     setBulkText("");
                   }}
-                  className="rounded-lg border border-card-border px-3 py-2 text-sm text-muted hover:text-foreground"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleBulkCategorize}
-                  disabled={!bulkText.trim() || bulkLoading}
-                  className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                  loading={bulkLoading}
+                  disabled={!bulkText.trim()}
                 >
-                  {bulkLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-4 w-4" />
-                  )}
+                  {!bulkLoading && <Sparkles className="h-4 w-4" />}
                   Categorize
-                </button>
+                </Button>
               </div>
             </>
           ) : (
@@ -487,28 +504,24 @@ export function PantrySection() {
                   Back to edit
                 </button>
                 <div className="flex gap-2">
-                  <button
+                  <Button
+                    variant="secondary"
                     onClick={() => {
                       setShowBulk(false);
                       setBulkPreview(null);
                       setBulkText("");
                     }}
-                    className="rounded-lg border border-card-border px-3 py-2 text-sm text-muted hover:text-foreground"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={handleBulkAdd}
-                    disabled={bulkAdding || !bulkPreview.some((p) => p.selected)}
-                    className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                    loading={bulkAdding}
+                    disabled={!bulkPreview.some((p) => p.selected)}
                   >
-                    {bulkAdding ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
+                    {!bulkAdding && <Plus className="h-4 w-4" />}
                     Add {bulkPreview.filter((p) => p.selected).length} Items
-                  </button>
+                  </Button>
                 </div>
               </div>
             </>
@@ -519,13 +532,13 @@ export function PantrySection() {
       {/* Search */}
       {items.length > 0 && (
         <div className="relative mt-4">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <input
+          <Search className="absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search pantry items..."
-            className="w-full rounded-lg border border-input-border bg-card py-2 pl-10 pr-8 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            className="pl-10 pr-8"
           />
           {search && (
             <button
@@ -550,11 +563,12 @@ export function PantrySection() {
 
       {/* Items grouped by category */}
       {items.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-card-border py-12 text-center">
-          <p className="text-sm text-muted">No pantry items yet.</p>
-          <p className="mt-1 text-xs text-muted">
-            Add your kitchen staples above, or use Bulk Import to add many at once.
-          </p>
+        <div className="mt-6">
+          <EmptyState
+            icon={Plus}
+            title="No pantry items yet"
+            description="Add your kitchen staples above, or use Bulk Import to add many at once."
+          />
         </div>
       ) : filteredItems.length === 0 ? (
         <p className="mt-6 py-8 text-center text-sm text-muted">
@@ -592,17 +606,17 @@ export function PantrySection() {
                           className="rounded-xl border border-accent/30 bg-card px-4 py-3"
                         >
                           <div className="flex gap-2">
-                            <input
+                            <Input
                               type="text"
                               value={editName}
                               onChange={(e) => setEditName(e.target.value)}
-                              className="flex-1 rounded-lg border border-input-border bg-background px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
+                              className="flex-1"
                               autoFocus
                             />
                             <select
                               value={editCategory}
                               onChange={(e) => setEditCategory(e.target.value)}
-                              className="rounded-lg border border-input-border bg-background px-2 py-1.5 text-sm focus:border-accent focus:outline-none"
+                              className={`${inlineSelectClass} px-2 py-1.5`}
                             >
                               {CATEGORIES.map((c) => (
                                 <option key={c} value={c}>
@@ -611,32 +625,20 @@ export function PantrySection() {
                               ))}
                             </select>
                           </div>
-                          <input
+                          <Input
                             type="text"
                             value={editNotes}
                             onChange={(e) => setEditNotes(e.target.value)}
                             placeholder="Notes (optional)"
-                            className="mt-2 w-full rounded-lg border border-input-border bg-background px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
+                            className="mt-2"
                           />
                           <div className="mt-2 flex justify-end gap-2">
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="rounded-lg px-3 py-1 text-xs text-muted hover:text-foreground"
-                            >
+                            <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>
                               Cancel
-                            </button>
-                            <button
-                              onClick={saveEdit}
-                              disabled={saving || !editName.trim()}
-                              className="flex items-center gap-1 rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-                            >
-                              {saving ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Check className="h-3 w-3" />
-                              )}
+                            </Button>
+                            <Button size="sm" onClick={saveEdit} loading={saving} disabled={!editName.trim()}>
                               Save
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       ) : (

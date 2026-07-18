@@ -15,6 +15,7 @@ export async function PUT(
       key: body.key ?? key,
       value: body.value ?? "",
       member: body.member,
+      memberId: body.memberId,
       startDate: body.startDate,
       endDate: body.endDate,
     });

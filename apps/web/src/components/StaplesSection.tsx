@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import {
-  Loader2,
   Plus,
   Trash2,
   Pencil,
@@ -14,6 +13,8 @@ import type { GroceryStaple, StapleStyle, StapleFrequency } from "@meal-planner/
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ListSkeleton } from "@/components/Skeleton";
+import { Button, Input, Select, EmptyState } from "@/components/ui";
+import { api, ApiError } from "@/lib/api";
 
 const FREQUENCY_LABELS: Record<StapleFrequency, string> = {
   weekly: "Weekly",
@@ -75,14 +76,17 @@ export function StaplesSection() {
 
   useEffect(() => {
     fetchStaples();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchStaples() {
     setLoading(true);
     try {
-      const res = await fetch("/api/staples");
-      const data = await res.json();
-      setStaples(data);
+      const data = await api<GroceryStaple[]>("/api/staples");
+      setStaples(Array.isArray(data) ? data : []);
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to load recurring items", "error");
+      setStaples([]);
     } finally {
       setLoading(false);
     }
@@ -125,45 +129,54 @@ export function StaplesSection() {
         frequency: form.frequency,
         notes: form.notes || undefined,
       };
-      const res = editingId
-        ? await fetch(`/api/staples/${encodeURIComponent(editingId)}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          })
-        : await fetch("/api/staples", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-      if (!res.ok) {
-        toast("Failed to save — please try again");
-        return;
+      if (editingId) {
+        await api(`/api/staples/${encodeURIComponent(editingId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await api("/api/staples", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
       }
       setShowForm(false);
       setEditingId(null);
       await fetchStaples();
       toast(editingId ? "Item updated" : "Item added");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to save — please try again", "error");
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(id: string) {
-    await fetch(`/api/staples/${encodeURIComponent(id)}`, { method: "DELETE" });
-    await fetchStaples();
-    setDeleteTarget(null);
-    toast("Item removed");
+    try {
+      await api(`/api/staples/${encodeURIComponent(id)}`, { method: "DELETE" });
+      await fetchStaples();
+      toast("Item removed");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to remove item", "error");
+    } finally {
+      setDeleteTarget(null);
+    }
   }
 
   async function handleToggleActive(staple: GroceryStaple) {
-    await fetch(`/api/staples/${encodeURIComponent(staple.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isActive: !staple.isActive }),
-    });
-    await fetchStaples();
-    toast(staple.isActive ? "Item deactivated" : "Item reactivated");
+    try {
+      await api(`/api/staples/${encodeURIComponent(staple.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !staple.isActive }),
+      });
+      await fetchStaples();
+      toast(staple.isActive ? "Item deactivated" : "Item reactivated");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to update item", "error");
+    }
   }
 
   if (loading) {
@@ -177,12 +190,9 @@ export function StaplesSection() {
     <div>
       {/* Header */}
       <div className="flex items-center justify-end">
-        <button
-          onClick={openAddForm}
-          className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-        >
+        <Button onClick={openAddForm} className="shrink-0 whitespace-nowrap">
           <Plus className="h-4 w-4" /> Add recurring item
-        </button>
+        </Button>
       </div>
 
       {/* Add/Edit Form */}
@@ -198,12 +208,12 @@ export function StaplesSection() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-medium text-muted">Name</label>
-              <input
+              <Input
+                className="mt-1"
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. Whole milk, Fruit for kids"
-                className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
               />
             </div>
 
@@ -237,54 +247,54 @@ export function StaplesSection() {
 
             <div>
               <label className="text-xs font-medium text-muted">Category</label>
-              <select
+              <Select
+                className="mt-1"
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
               >
                 {CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat.charAt(0).toUpperCase() + cat.slice(1)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
               <label className="text-xs font-medium text-muted">Frequency</label>
-              <select
+              <Select
+                className="mt-1"
                 value={form.frequency}
                 onChange={(e) => setForm({ ...form, frequency: e.target.value as StapleFrequency })}
-                className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
               >
                 <option value="weekly">Weekly</option>
                 <option value="biweekly">Every 2 weeks</option>
                 <option value="monthly">Monthly</option>
                 <option value="as-needed">As needed</option>
-              </select>
+              </Select>
             </div>
 
             {form.style === "specific" ? (
               <>
                 <div>
                   <label className="text-xs font-medium text-muted">Quantity</label>
-                  <input
+                  <Input
+                    className="mt-1"
                     type="number"
                     value={form.defaultQuantity}
                     onChange={(e) => setForm({ ...form, defaultQuantity: e.target.value })}
                     placeholder="1"
                     step="any"
-                    className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
                   />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted">Unit</label>
-                  <input
+                  <Input
+                    className="mt-1"
                     type="text"
                     value={form.defaultUnit}
                     onChange={(e) => setForm({ ...form, defaultUnit: e.target.value })}
                     placeholder="gallon, 12-pack, bunch..."
-                    className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
                   />
                 </div>
               </>
@@ -293,43 +303,39 @@ export function StaplesSection() {
                 <label className="text-xs font-medium text-muted">
                   Description (shopper guidance)
                 </label>
-                <input
+                <Input
+                  className="mt-1"
                   type="text"
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="e.g. Grab 2-3 types the kids will eat"
-                  className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
                 />
               </div>
             )}
 
             <div className="col-span-2">
               <label className="text-xs font-medium text-muted">Notes (optional)</label>
-              <input
+              <Input
+                className="mt-1"
                 type="text"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 placeholder="e.g. for coffee, for the kids"
-                className="mt-1 w-full rounded-lg border border-input-border bg-background px-3 py-2 text-sm focus:border-accent focus:outline-none"
               />
             </div>
           </div>
 
           <div className="mt-5 flex items-center justify-end gap-2">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => { setShowForm(false); setEditingId(null); }}
-              className="rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground"
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !form.name.trim()}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId ? "Update" : "Add"}
-            </button>
+            </Button>
+            <Button type="submit" loading={saving} disabled={!form.name.trim()}>
+              {editingId ? "Update" : "Add"}
+            </Button>
           </div>
         </form>
       )}
@@ -340,13 +346,11 @@ export function StaplesSection() {
           Active ({activeStaples.length})
         </h2>
         {activeStaples.length === 0 && (
-          <div className="rounded-xl border border-dashed border-card-border py-12 text-center">
-            <ShoppingBasket className="mx-auto h-10 w-10 text-muted/30" />
-            <p className="mt-3 text-sm text-muted">No recurring items configured yet.</p>
-            <p className="text-xs text-muted mt-1">
-              Add items your family buys regularly — milk, bananas, etc.
-            </p>
-          </div>
+          <EmptyState
+            icon={ShoppingBasket}
+            title="No recurring items configured yet"
+            description="Add items your family buys regularly — milk, bananas, etc."
+          />
         )}
         <div className="space-y-2">
           {activeStaples.map((staple) => (

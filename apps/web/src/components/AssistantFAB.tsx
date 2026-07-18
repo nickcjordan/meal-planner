@@ -55,13 +55,14 @@ function getPageContext(pathname: string): string {
   if (pathname === "/week") return "the This Week view (current meal plan)";
   if (pathname.startsWith("/recipes")) return "the Recipes page (browsing the recipe library)";
   if (pathname === "/grocery") return "the Grocery List page (current shopping list)";
-  if (pathname === "/pantry") return "the Pantry page (managing always-on-hand ingredients)";
   if (pathname.startsWith("/settings/preferences")) return "the Family Preferences page";
   if (pathname.startsWith("/settings/kitchen")) return "the Kitchen Settings page";
   if (pathname.startsWith("/settings/history")) return "the Meal Plan History page";
+  if (pathname.startsWith("/settings/sides")) return "the Sides settings page";
+  if (pathname.startsWith("/settings/swaps")) return "the Ingredient Swaps settings page";
+  if (pathname.startsWith("/settings/recurring")) return "the Recurring Groceries settings page";
   if (pathname.startsWith("/settings")) return "the Settings page";
   if (pathname.startsWith("/review")) return "the Meal Review page";
-  if (pathname.startsWith("/shopping")) return "the Shopping List page";
   return pathname;
 }
 
@@ -93,7 +94,8 @@ export function AssistantFAB({ pathname }: AssistantFABProps) {
   const initialized = useRef(false);
   const persistRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isOpenRef = useRef(isOpen);
-  const hidden = pathname.startsWith("/cook");
+  // Hide on surfaces that host their own dedicated chat (cook + plan).
+  const hidden = pathname.startsWith("/cook") || pathname.startsWith("/plan");
   const { toast } = useToast();
 
   // Keep ref in sync so the streaming callback can read current open state
@@ -400,7 +402,7 @@ export function AssistantFAB({ pathname }: AssistantFABProps) {
                   {toolActivities.map((activity, i) => (
                     <div key={i} className="flex items-center gap-1.5 text-xs text-muted">
                       {activity.durationMs != null ? (
-                        <Check className="h-3 w-3 text-green-500/70" />
+                        <Check className="h-3 w-3 text-success/70" />
                       ) : (
                         <Loader2 className="h-3 w-3 animate-spin text-accent" />
                       )}
@@ -422,11 +424,11 @@ export function AssistantFAB({ pathname }: AssistantFABProps) {
                 {heartbeatTick > 0 && (
                   <span
                     key={heartbeatTick}
-                    className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"
+                    className="absolute inline-flex h-full w-full rounded-full bg-success opacity-75"
                     style={{ animation: "ping 1s cubic-bezier(0, 0, 0.2, 1) 1" }}
                   />
                 )}
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500/50" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success/50" />
               </span>
             </div>
           )}

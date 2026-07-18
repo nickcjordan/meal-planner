@@ -23,26 +23,34 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
-      {/* Horizontal tab nav for settings */}
-      <div className="mb-6 flex gap-2 border-b border-card-border pb-4">
-        {SETTINGS_NAV.map((item) => {
-          const Icon = item.icon;
-          const active = isActive(pathname, item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-accent/10 text-accent"
-                  : "text-muted hover:bg-tag-bg hover:text-foreground"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          );
-        })}
+      {/* Horizontal tab nav — scrolls horizontally on narrow screens so all
+          tabs stay reachable, with a right-edge fade hinting at overflow. */}
+      <div className="relative mb-6 border-b border-card-border">
+        <div className="flex gap-2 overflow-x-auto pb-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          {SETTINGS_NAV.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-accent/10 text-accent"
+                    : "text-muted hover:bg-tag-bg hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+        <div
+          className="pointer-events-none absolute right-0 top-0 bottom-4 w-10 bg-gradient-to-l from-background to-transparent sm:hidden"
+          aria-hidden="true"
+        />
       </div>
 
       {children}

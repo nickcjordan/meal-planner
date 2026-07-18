@@ -2,7 +2,8 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
-import { Upload, FileText, Loader2, AlertCircle, Check } from "lucide-react";
+import { Upload, FileText, AlertCircle, Check } from "lucide-react";
+import { Button, Textarea } from "@/components/ui";
 import type { Recipe } from "@meal-planner/types";
 
 interface ImportResponse {
@@ -90,10 +91,8 @@ export function JsonImportForm() {
 
       const data: ImportResponse = await res.json();
       setResult(data);
-
-      if (data.errors.length > 0 && data.imported.length === 0) {
-        setError("All recipes failed validation. Check the errors below.");
-      }
+      // The zero-imported case is surfaced by the (non-green) results summary
+      // below, so no separate error banner is needed here.
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -101,20 +100,14 @@ export function JsonImportForm() {
     }
   }
 
-  const inputClass =
-    "block w-full rounded-lg border border-input-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
-
   return (
     <div className="space-y-6">
       {/* File upload */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center gap-2 rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-tag-bg"
-        >
+        <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
           <Upload className="h-4 w-4" />
           Upload .json file
-        </button>
+        </Button>
         <input
           ref={fileInputRef}
           type="file"
@@ -127,7 +120,7 @@ export function JsonImportForm() {
 
       {/* JSON input */}
       <form onSubmit={handleImport} className="space-y-3">
-        <textarea
+        <Textarea
           value={jsonText}
           onChange={(e) => {
             setJsonText(e.target.value);
@@ -141,55 +134,68 @@ export function JsonImportForm() {
 
 Each recipe needs at minimum: name, ingredients, steps`}
           rows={12}
-          className={`${inputClass} font-mono text-xs`}
+          className="font-mono text-xs"
           required
         />
-        <button
-          type="submit"
-          disabled={loading || !jsonText.trim()}
-          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
-        >
+        <Button type="submit" variant="primary" size="lg" loading={loading} disabled={!jsonText.trim()}>
           {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Importing...
-            </>
+            "Importing…"
           ) : (
             <>
               <FileText className="h-4 w-4" />
               Import
             </>
           )}
-        </button>
+        </Button>
       </form>
 
       {/* Error */}
       {error && (
-        <div className="flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/10 p-4">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+          <p className="text-sm text-danger">{error}</p>
         </div>
       )}
 
       {/* Results */}
       {result && (
         <div className="space-y-3">
-          {/* Summary */}
-          <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 p-4">
-            <Check className="h-4 w-4 text-green-500" />
-            <span className="text-sm text-green-600 dark:text-green-400">
-              {result.summary.imported} of {result.summary.total} recipes
-              imported.{" "}
-              <Link href="/recipes" className="font-medium underline">
-                View recipes
-              </Link>
-            </span>
-          </div>
+          {/* Summary — tone reflects outcome (all / partial / none imported) */}
+          {(() => {
+            const { imported, total } = result.summary;
+            const tone =
+              imported === 0
+                ? "border-danger/30 bg-danger/10 text-danger"
+                : imported === total
+                  ? "border-success/30 bg-success/10 text-success"
+                  : "border-warning/30 bg-warning/10 text-warning";
+            return (
+              <div className={`flex items-center gap-2 rounded-lg border p-4 ${tone}`}>
+                {imported === 0 ? (
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                ) : (
+                  <Check className="h-4 w-4 shrink-0" />
+                )}
+                <span className="text-sm">
+                  {imported === 0 ? (
+                    `No recipes imported — all ${total} failed validation.`
+                  ) : (
+                    <>
+                      {imported} of {total} recipes imported.{" "}
+                      <Link href="/recipes" className="font-medium underline">
+                        View recipes
+                      </Link>
+                    </>
+                  )}
+                </span>
+              </div>
+            );
+          })()}
 
           {/* Duplicate warnings */}
           {result.duplicateWarnings.length > 0 && (
-            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
-              <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
+            <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
+              <p className="text-sm font-medium text-warning">
                 Duplicate warnings:
               </p>
               <ul className="mt-1 space-y-1">
@@ -205,8 +211,8 @@ Each recipe needs at minimum: name, ingredients, steps`}
 
           {/* Errors */}
           {result.errors.length > 0 && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-              <p className="text-sm font-medium text-red-600 dark:text-red-400">
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-4">
+              <p className="text-sm font-medium text-danger">
                 {result.errors.length} recipe{result.errors.length === 1 ? "" : "s"}{" "}
                 failed:
               </p>

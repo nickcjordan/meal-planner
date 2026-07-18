@@ -6,6 +6,7 @@ import Image from "next/image";
 import { MealDbCard, MealDbCardSkeleton, MealDbEmptyState } from "./MealDbCard";
 import { ImportPreview } from "./ImportPreview";
 import { RecipeForm } from "./RecipeForm";
+import { Button, Input } from "@/components/ui";
 import type { Recipe } from "@meal-planner/types";
 
 interface SearchResult {
@@ -244,9 +245,6 @@ export function ApiSearchForm() {
     } as Recipe;
   }
 
-  const inputClass =
-    "block w-full rounded-lg border border-input-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
-
   const displayResults =
     viewMode === "search" ? searchResults : browseResults;
   const browseContext =
@@ -260,49 +258,42 @@ export function ApiSearchForm() {
       <div className="flex gap-3">
         <form onSubmit={handleSearch} className="flex flex-1 gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <input
+            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted" />
+            <Input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search recipes (e.g., chicken, pasta, curry...)"
-              className={`${inputClass} pl-9`}
+              className="pl-9"
             />
           </div>
-          <button
+          <Button
             type="submit"
-            disabled={searching || query.trim().length < 2}
-            className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            variant="primary"
+            size="lg"
+            loading={searching && viewMode === "search"}
+            disabled={query.trim().length < 2}
           >
-            {searching && viewMode === "search" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              "Search"
-            )}
-          </button>
+            Search
+          </Button>
         </form>
-        <button
+        <Button
+          variant="secondary"
+          size="lg"
           onClick={handleRandom}
-          disabled={importing}
-          className="flex items-center gap-2 rounded-lg border border-card-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-tag-bg"
+          loading={importing}
           title="Surprise me with a random recipe"
         >
-          {importing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <>
-              <Shuffle className="h-4 w-4" />
-              <span className="hidden sm:inline">Surprise Me</span>
-            </>
-          )}
-        </button>
+          {!importing && <Shuffle className="h-4 w-4" />}
+          <span className="hidden sm:inline">Surprise Me</span>
+        </Button>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/10 p-4">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+          <p className="text-sm text-danger">{error}</p>
         </div>
       )}
 
@@ -455,26 +446,16 @@ export function ApiSearchForm() {
             extractionMethod="TheMealDB"
           />
           <div className="flex gap-3">
-            <button
-              onClick={() => setShowForm(true)}
-              className="rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-            >
+            <Button variant="primary" size="lg" onClick={() => setShowForm(true)}>
               Edit & Save Recipe
-            </button>
-            <button
-              onClick={goHome}
-              className="rounded-lg border border-card-border px-5 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-tag-bg hover:text-foreground"
-            >
+            </Button>
+            <Button variant="secondary" size="lg" onClick={goHome}>
               Back to Browse
-            </button>
-            <button
-              onClick={handleRandom}
-              disabled={importing}
-              className="flex items-center gap-1.5 rounded-lg border border-card-border px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-tag-bg hover:text-foreground"
-            >
-              <Shuffle className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="secondary" size="lg" onClick={handleRandom} loading={importing}>
+              {!importing && <Shuffle className="h-3.5 w-3.5" />}
               Another Random
-            </button>
+            </Button>
           </div>
         </div>
       )}

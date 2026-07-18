@@ -6,6 +6,19 @@ import type {
 import { searchProducts, type HebRawProduct } from "./search.js";
 import { getHebStore } from "./cookies.js";
 import { getFreshCookies, hasFreshCookies } from "./session.js";
+import { decodeHtmlEntities } from "./decode.js";
+
+/**
+ * The customer-facing product name, HTML-decoded. HEB returns both a raw
+ * `displayName` (HTML-encoded) and a `decodedDisplayName`; prefer the latter
+ * when present and still run the decoder in case any entities remain. Used for
+ * both the persisted match name and the similarity tokenizer, so junk tokens
+ * like "nbsp" never enter the score.
+ */
+function cleanProductName(product: HebRawProduct): string {
+  const raw = product.decodedDisplayName?.trim() || product.displayName;
+  return decodeHtmlEntities(raw);
+}
 
 /**
  * Progress events yielded during enrichment.
@@ -103,7 +116,7 @@ function toProductMatch(product: HebRawProduct): HebProductMatch {
 
   return {
     productId: product.id,
-    name: product.displayName,
+    name: cleanProductName(product),
     brand: product.brand?.name,
     isOwnBrand: product.brand?.isOwnBrand,
     size: sku?.customerFriendlySize,
@@ -139,7 +152,7 @@ async function matchProduct(
   const chosen = selectBestCandidate(
     itemName,
     products.map((p) => ({
-      name: p.displayName,
+      name: cleanProductName(p),
       inStock: p.inventory.inventoryState === "IN_STOCK",
     })),
   );

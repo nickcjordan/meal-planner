@@ -29,8 +29,8 @@ export function ImportPreview({
     <div className="space-y-4">
       {/* Duplicate warnings */}
       {duplicates && duplicates.length > 0 && (
-        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
-          <div className="flex items-center gap-2 text-sm font-medium text-yellow-600 dark:text-yellow-400">
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-warning">
             <AlertTriangle className="h-4 w-4" />
             Similar recipe already exists
           </div>

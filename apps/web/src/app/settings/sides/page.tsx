@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, X, Check } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Pencil, Trash2, AlertCircle, Salad } from "lucide-react";
 import type {
   Side,
   CreateSideInput,
@@ -9,6 +9,11 @@ import type {
   SideComplexity,
   SideIngredient,
 } from "@meal-planner/types";
+import { useToast } from "@/components/Toast";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ListSkeleton } from "@/components/Skeleton";
+import { Button, Input, Select, PageHeader, EmptyState } from "@/components/ui";
+import { api, ApiError } from "@/lib/api";
 
 const SIDE_CATEGORIES: { value: SideCategory; label: string }[] = [
   { value: "green", label: "Greens / Vegetables" },
@@ -27,56 +32,79 @@ const COMPLEXITY_OPTIONS: { value: SideComplexity; label: string; desc: string }
 ];
 
 const COMPLEXITY_STYLES: Record<string, string> = {
-  effortless: "bg-green-500/15 text-green-500",
+  effortless: "bg-success/15 text-success",
   simple: "bg-accent/15 text-accent",
-  prepared: "bg-amber-500/15 text-amber-500",
+  prepared: "bg-warning/15 text-warning",
 };
 
 export default function SidesSettingsPage() {
   const [sides, setSides] = useState<Side[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [filterCategory, setFilterCategory] = useState<SideCategory | "">("");
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Side | null>(null);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    let cancelled = false;
-    const url = filterCategory ? `/api/sides?category=${filterCategory}` : "/api/sides";
-    fetch(url)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled) {
-          setSides(data);
-          setLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
+  const loadSides = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const url = filterCategory ? `/api/sides?category=${encodeURIComponent(filterCategory)}` : "/api/sides";
+      const data = await api<Side[]>(url);
+      setSides(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : "Failed to load sides");
+      setSides([]);
+    } finally {
+      setLoading(false);
+    }
   }, [filterCategory]);
 
+  useEffect(() => {
+    loadSides();
+  }, [loadSides]);
+
   async function handleDelete(id: string) {
-    await fetch(`/api/sides/${id}`, { method: "DELETE" });
-    setSides((prev) => prev.filter((s) => s.id !== id));
+    try {
+      await api(`/api/sides/${id}`, { method: "DELETE" });
+      setSides((prev) => prev.filter((s) => s.id !== id));
+      toast("Side removed");
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to delete side", "error");
+    } finally {
+      setDeleteTarget(null);
+    }
   }
 
   async function handleSave(input: CreateSideInput, id?: string) {
-    if (id) {
-      const res = await fetch(`/api/sides/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      const updated = await res.json();
-      setSides((prev) => prev.map((s) => (s.id === id ? updated : s)));
-      setEditingId(null);
-    } else {
-      const res = await fetch("/api/sides", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      const created = await res.json();
-      setSides((prev) => [...prev, created]);
-      setShowAddForm(false);
+    setSaving(true);
+    try {
+      if (id) {
+        const updated = await api<Side>(`/api/sides/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
+        setSides((prev) => prev.map((s) => (s.id === id ? updated : s)));
+        setEditingId(null);
+        toast("Side updated");
+      } else {
+        const created = await api<Side>("/api/sides", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
+        setSides((prev) => [...prev, created]);
+        setShowAddForm(false);
+        toast("Side added");
+      }
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Failed to save side", "error");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -89,21 +117,15 @@ export default function SidesSettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Sides Library</h1>
-          <p className="mt-1 text-sm text-muted">
-            Curated sides that Claude pairs with your meals. Steamed broccoli, rice,
-            salad — the things that complete a plate.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90"
-        >
-          <Plus className="h-4 w-4" /> Add Side
-        </button>
-      </div>
+      <PageHeader
+        title="Sides Library"
+        subtitle="Curated sides that Claude pairs with your meals. Steamed broccoli, rice, salad — the things that complete a plate."
+        actions={
+          <Button onClick={() => setShowAddForm(true)}>
+            <Plus className="h-4 w-4" /> Add Side
+          </Button>
+        }
+      />
 
       {/* Category filter */}
       <div className="mt-4 flex flex-wrap gap-2">
@@ -132,6 +154,7 @@ export default function SidesSettingsPage() {
       {showAddForm && (
         <div className="mt-4">
           <SideForm
+            saving={saving}
             onSave={(input) => handleSave(input)}
             onCancel={() => setShowAddForm(false)}
           />
@@ -140,10 +163,34 @@ export default function SidesSettingsPage() {
 
       {/* Sides list grouped by category */}
       {loading ? (
-        <div className="mt-8 text-center text-sm text-muted">Loading sides...</div>
+        <div className="mt-6">
+          <ListSkeleton rows={5} />
+        </div>
+      ) : loadError ? (
+        <div className="mt-6">
+          <EmptyState
+            icon={AlertCircle}
+            title="Couldn't load sides"
+            description={loadError}
+            action={<Button onClick={loadSides}>Retry</Button>}
+          />
+        </div>
       ) : sides.length === 0 ? (
-        <div className="mt-8 text-center text-sm text-muted">
-          No sides yet. Add some or let Claude suggest sides during planning.
+        <div className="mt-6">
+          <EmptyState
+            icon={Salad}
+            title={filterCategory ? "No sides in this category" : "No sides yet"}
+            description={
+              filterCategory
+                ? "Try another category, or add a side to this one."
+                : "Add some, or let Claude suggest sides during planning."
+            }
+            action={
+              <Button onClick={() => setShowAddForm(true)}>
+                <Plus className="h-4 w-4" /> Add Side
+              </Button>
+            }
+          />
         </div>
       ) : (
         <div className="mt-6 space-y-6">
@@ -160,6 +207,7 @@ export default function SidesSettingsPage() {
                       <SideForm
                         key={side.id}
                         initial={side}
+                        saving={saving}
                         onSave={(input) => handleSave(input, side.id)}
                         onCancel={() => setEditingId(null)}
                       />
@@ -194,12 +242,14 @@ export default function SidesSettingsPage() {
                           <button
                             onClick={() => setEditingId(side.id)}
                             className="rounded p-1.5 text-muted hover:bg-tag-bg hover:text-foreground"
+                            title="Edit"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
-                            onClick={() => handleDelete(side.id)}
-                            className="rounded p-1.5 text-muted hover:bg-red-500/10 hover:text-red-500"
+                            onClick={() => setDeleteTarget(side)}
+                            className="rounded p-1.5 text-muted hover:bg-danger/10 hover:text-danger"
+                            title="Delete"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -223,6 +273,14 @@ export default function SidesSettingsPage() {
           <li>Side ingredients are included in your grocery list with source tracking</li>
         </ul>
       </div>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete side"
+        message={`Remove "${deleteTarget?.name}" from your sides library?`}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget.id)}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
@@ -231,10 +289,12 @@ function SideForm({
   initial,
   onSave,
   onCancel,
+  saving,
 }: {
   initial?: Side;
   onSave: (input: CreateSideInput) => void;
   onCancel: () => void;
+  saving?: boolean;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [baseIngredient, setBaseIngredient] = useState(initial?.baseIngredient ?? "");
@@ -256,6 +316,37 @@ function SideForm({
       category: ing.category ?? "",
     })),
   );
+
+  // Unsaved-changes guard: snapshot the initial serialized state once (lazy
+  // useState), compare on Cancel so a stray click doesn't silently discard a
+  // long entry.
+  const [initialSnapshot] = useState(() =>
+    JSON.stringify({
+      name: initial?.name ?? "",
+      baseIngredient: initial?.baseIngredient ?? "",
+      prepStyle: initial?.prepStyle ?? "",
+      complexity: initial?.complexity ?? "simple",
+      sideCategory: initial?.sideCategory ?? "green",
+      tags: initial?.tags.join(", ") ?? "",
+      prepNotes: initial?.prepNotes ?? "",
+      pairingHints: initial?.pairingHints?.join(", ") ?? "",
+      ingredientRows: (initial?.ingredients ?? []).map((ing) => ({
+        name: ing.name,
+        quantity: String(ing.quantity),
+        unit: ing.unit,
+        category: ing.category ?? "",
+      })),
+    }),
+  );
+  const currentSnapshot = JSON.stringify({
+    name, baseIngredient, prepStyle, complexity, sideCategory, tags, prepNotes, pairingHints, ingredientRows,
+  });
+  const dirty = currentSnapshot !== initialSnapshot;
+
+  function handleCancel() {
+    if (dirty && !window.confirm("Discard your unsaved changes?")) return;
+    onCancel();
+  }
 
   function addIngredientRow() {
     setIngredientRows((prev) => [...prev, { name: "", quantity: "", unit: "", category: "" }]);
@@ -308,21 +399,19 @@ function SideForm({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Name</label>
-          <input
+          <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Steamed Broccoli"
-            className="w-full rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-foreground placeholder:text-placeholder"
             required
           />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Base Ingredient</label>
-          <input
+          <Input
             value={baseIngredient}
             onChange={(e) => setBaseIngredient(e.target.value)}
             placeholder="broccoli"
-            className="w-full rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-foreground placeholder:text-placeholder"
             required
           />
         </div>
@@ -331,60 +420,55 @@ function SideForm({
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Prep Style</label>
-          <input
+          <Input
             value={prepStyle}
             onChange={(e) => setPrepStyle(e.target.value)}
             placeholder="steamed"
-            className="w-full rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-foreground placeholder:text-placeholder"
           />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Complexity</label>
-          <select
+          <Select
             value={complexity}
             onChange={(e) => setComplexity(e.target.value as SideComplexity)}
-            className="w-full rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-foreground"
           >
             {COMPLEXITY_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Category</label>
-          <select
+          <Select
             value={sideCategory}
             onChange={(e) => setSideCategory(e.target.value as SideCategory)}
-            className="w-full rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-foreground"
           >
             {SIDE_CATEGORIES.map((cat) => (
               <option key={cat.value} value={cat.value}>
                 {cat.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Tags (comma-separated)</label>
-          <input
+          <Input
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="kid-friendly, asian"
-            className="w-full rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-foreground placeholder:text-placeholder"
           />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Pairing hints (comma-separated)</label>
-          <input
+          <Input
             value={pairingHints}
             onChange={(e) => setPairingHints(e.target.value)}
             placeholder="stir-fry, grilled-protein"
-            className="w-full rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-foreground placeholder:text-placeholder"
           />
         </div>
       </div>
@@ -408,35 +492,35 @@ function SideForm({
           <div className="space-y-2">
             {ingredientRows.map((row, i) => (
               <div key={i} className="flex items-center gap-2">
-                <input
+                <Input
                   value={row.name}
                   onChange={(e) => updateIngredientRow(i, "name", e.target.value)}
                   placeholder="broccoli"
-                  className="min-w-0 flex-[3] rounded-lg border border-input-border bg-input-bg px-2 py-1.5 text-sm text-foreground placeholder:text-placeholder"
+                  className="min-w-0 flex-[3]"
                 />
-                <input
+                <Input
                   value={row.quantity}
                   onChange={(e) => updateIngredientRow(i, "quantity", e.target.value)}
                   placeholder="1"
                   inputMode="decimal"
-                  className="min-w-0 flex-1 rounded-lg border border-input-border bg-input-bg px-2 py-1.5 text-sm text-foreground placeholder:text-placeholder"
+                  className="min-w-0 flex-1"
                 />
-                <input
+                <Input
                   value={row.unit}
                   onChange={(e) => updateIngredientRow(i, "unit", e.target.value)}
                   placeholder="head"
-                  className="min-w-0 flex-1 rounded-lg border border-input-border bg-input-bg px-2 py-1.5 text-sm text-foreground placeholder:text-placeholder"
+                  className="min-w-0 flex-1"
                 />
-                <input
+                <Input
                   value={row.category}
                   onChange={(e) => updateIngredientRow(i, "category", e.target.value)}
                   placeholder="produce"
-                  className="min-w-0 flex-[2] rounded-lg border border-input-border bg-input-bg px-2 py-1.5 text-sm text-foreground placeholder:text-placeholder"
+                  className="min-w-0 flex-[2]"
                 />
                 <button
                   type="button"
                   onClick={() => removeIngredientRow(i)}
-                  className="shrink-0 rounded p-1.5 text-muted hover:bg-red-500/10 hover:text-red-500"
+                  className="shrink-0 rounded p-1.5 text-muted hover:bg-danger/10 hover:text-danger"
                   aria-label="Remove ingredient"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -449,29 +533,25 @@ function SideForm({
 
       <div>
         <label className="block text-xs font-medium text-muted mb-1">Prep Notes</label>
-        <input
+        <Input
           value={prepNotes}
           onChange={(e) => setPrepNotes(e.target.value)}
           placeholder="Toss with soy sauce in skillet over medium-high, 5 min"
-          className="w-full rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-foreground placeholder:text-placeholder"
         />
       </div>
 
       <div className="flex items-center gap-2 pt-1">
-        <button
+        <Button
           type="submit"
+          size="sm"
+          loading={saving}
           disabled={!name.trim() || !baseIngredient.trim()}
-          className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
         >
-          <Check className="h-3.5 w-3.5" /> {initial ? "Update" : "Add"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex items-center gap-1.5 rounded-lg border border-card-border px-3 py-1.5 text-sm text-muted transition-colors hover:bg-tag-bg"
-        >
-          <X className="h-3.5 w-3.5" /> Cancel
-        </button>
+          {initial ? "Update" : "Add"}
+        </Button>
+        <Button type="button" size="sm" variant="secondary" onClick={handleCancel}>
+          Cancel
+        </Button>
       </div>
     </form>
   );

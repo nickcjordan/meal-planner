@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Link2, Loader2, AlertCircle } from "lucide-react";
+import { Link2, AlertCircle } from "lucide-react";
 import { ImportPreview } from "./ImportPreview";
 import { RecipeForm } from "./RecipeForm";
+import { Button, Input } from "@/components/ui";
 import type { Recipe } from "@meal-planner/types";
 
 interface ImportApiResponse {
@@ -102,45 +103,31 @@ export function UrlImportForm() {
     } as Recipe;
   }
 
-  const inputClass =
-    "block w-full rounded-lg border border-input-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
-
   return (
     <div className="space-y-6">
       {/* URL input */}
       <form onSubmit={handleImport} className="flex gap-3">
         <div className="relative flex-1">
-          <Link2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <input
+          <Link2 className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="Paste a recipe URL (e.g., allrecipes.com/recipe/...)"
-            className={`${inputClass} pl-9`}
+            className="pl-9"
             required
           />
         </div>
-        <button
-          type="submit"
-          disabled={loading || !url.trim()}
-          className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Importing...
-            </>
-          ) : (
-            "Import"
-          )}
-        </button>
+        <Button type="submit" variant="primary" size="lg" loading={loading} disabled={!url.trim()}>
+          {loading ? "Importing…" : "Import"}
+        </Button>
       </form>
 
       {/* Error */}
       {error && (
-        <div className="flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/10 p-4">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+          <p className="text-sm text-danger">{error}</p>
         </div>
       )}
 
@@ -154,21 +141,19 @@ export function UrlImportForm() {
             extractionMethod={result.extractionMethod}
           />
           <div className="flex gap-3">
-            <button
-              onClick={() => setShowForm(true)}
-              className="rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
-            >
+            <Button variant="primary" size="lg" onClick={() => setShowForm(true)}>
               Edit & Save Recipe
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
               onClick={() => {
                 setResult(null);
                 setUrl("");
               }}
-              className="rounded-lg border border-card-border px-5 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-tag-bg hover:text-foreground"
             >
               Discard
-            </button>
+            </Button>
           </div>
         </div>
       )}

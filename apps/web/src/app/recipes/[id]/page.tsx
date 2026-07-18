@@ -3,8 +3,9 @@ import Link from "next/link";
 import { getRecipe, listDietaryAdaptations, listFamilyMembers, listActiveIngredientSwaps } from "@meal-planner/db";
 import { namesMatchExact } from "@meal-planner/import";
 import { Clock, Users, ExternalLink, Pencil, ArrowLeft, FlaskConical, ArrowRightLeft, ChefHat } from "lucide-react";
-import { IngredientActions } from "@/components/IngredientActions";
+import { RecipeIngredientsSection } from "@/components/RecipeIngredientsSection";
 import { RecipeStepsToggle } from "@/components/RecipeStepsToggle";
+import { formatMinutes } from "@/lib/format";
 import { DeleteRecipeButton } from "@/components/DeleteRecipeButton";
 import { RecipeImageUpload } from "@/components/RecipeImageUpload";
 import { RecipeEnhanceButton } from "@/components/RecipeEnhanceButton";
@@ -118,8 +119,8 @@ export default async function RecipeDetailPage({
         <div className="mt-5 flex flex-wrap items-center gap-5 text-sm text-muted">
           <span className="flex items-center gap-1.5">
             <Clock className="h-4 w-4" />
-            Prep: {recipe.prepTime}m | Cook: {recipe.cookTime}m
-            {recipe.inactiveTime ? ` | Rest: ${recipe.inactiveTime}m` : ""}
+            Prep: {formatMinutes(recipe.prepTime)} | Cook: {formatMinutes(recipe.cookTime)}
+            {recipe.inactiveTime ? ` | Rest: ${formatMinutes(recipe.inactiveTime)}` : ""}
           </span>
           <span className="flex items-center gap-1.5">
             <Users className="h-4 w-4" />
@@ -156,15 +157,15 @@ export default async function RecipeDetailPage({
             {adaptationNotes.map((note) => (
               <div
                 key={note!.adaptationName}
-                className="flex items-start gap-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-2.5 text-sm"
+                className="flex items-start gap-2.5 rounded-lg border border-success/20 bg-success/5 px-4 py-2.5 text-sm"
               >
-                <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                 <div>
                   <span className="font-medium text-foreground">{note!.memberName}:</span>{" "}
                   <span className="text-muted">
                     {note!.matches.length} ingredient{note!.matches.length !== 1 ? "s" : ""} with swaps available
-                    {note!.exact > 0 && <span className="text-green-500"> ({note!.exact} exact)</span>}
-                    {note!.approximate > 0 && <span className="text-amber-500"> ({note!.approximate} approximate)</span>}
+                    {note!.exact > 0 && <span className="text-success"> ({note!.exact} exact)</span>}
+                    {note!.approximate > 0 && <span className="text-warning"> ({note!.approximate} approximate)</span>}
                   </span>
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {note!.matches.map((m) => (
@@ -172,8 +173,8 @@ export default async function RecipeDetailPage({
                         key={m.ingredient}
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                           m.rule.quality === "exact"
-                            ? "bg-green-500/10 text-green-500"
-                            : "bg-amber-500/10 text-amber-500"
+                            ? "bg-success/10 text-success"
+                            : "bg-warning/10 text-warning"
                         }`}
                         title={m.rule.quality === "approximate" && m.rule.condition ? m.rule.condition : undefined}
                       >
@@ -190,8 +191,8 @@ export default async function RecipeDetailPage({
         {/* Auto swap matches */}
         {swapMatches.length > 0 && (
           <div className="mt-6">
-            <div className="flex items-start gap-2.5 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 text-sm">
-              <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-info/20 bg-info/5 px-4 py-2.5 text-sm">
+              <ArrowRightLeft className="mt-0.5 h-4 w-4 shrink-0 text-info" />
               <div>
                 <span className="font-medium text-foreground">Auto swaps:</span>{" "}
                 <span className="text-muted">
@@ -201,7 +202,7 @@ export default async function RecipeDetailPage({
                   {swapMatches.map((m) => (
                     <span
                       key={m.ingredient}
-                      className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500"
+                      className="rounded-full bg-info/10 px-2 py-0.5 text-xs font-medium text-info"
                       title={m.reason ?? undefined}
                     >
                       {m.ingredient} → {m.swapTo}
@@ -240,10 +241,10 @@ export default async function RecipeDetailPage({
         )}
 
         <div className="mt-10 grid gap-10 lg:grid-cols-2">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Ingredients</h2>
-            <IngredientActions ingredientSections={recipe.ingredientSections} />
-          </div>
+          <RecipeIngredientsSection
+            ingredientSections={recipe.ingredientSections}
+            baseServings={recipe.servings}
+          />
 
           <div>
             <RecipeStepsToggle

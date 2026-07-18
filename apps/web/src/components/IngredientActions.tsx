@@ -4,6 +4,9 @@ import { useState } from "react";
 import { Home, RotateCcw, Check } from "lucide-react";
 import { AddToListModal, type ListTarget } from "./AddToListModal";
 import type { IngredientSection } from "@meal-planner/types";
+import { Badge } from "@/components/ui";
+import { tryApi } from "@/lib/api";
+import { useToast } from "@/components/Toast";
 
 interface Ingredient {
   name: string;
@@ -14,11 +17,35 @@ interface Ingredient {
 
 interface IngredientActionsProps {
   ingredientSections: IngredientSection[];
+  /** Multiplier applied to displayed quantities (servings scaler). */
+  scale?: number;
 }
 
 type AddedState = Record<string, ListTarget>;
 
-export function IngredientActions({ ingredientSections }: IngredientActionsProps) {
+/** Format a scaled quantity for display (mirrors CookingView). */
+function formatQuantity(qty: number): string {
+  if (qty === 0) return "0";
+  const whole = Math.floor(qty);
+  const frac = Math.round((qty - whole) * 100) / 100;
+  const fractions: Record<number, string> = {
+    0.25: "¼",
+    0.33: "⅓",
+    0.34: "⅓",
+    0.5: "½",
+    0.66: "⅔",
+    0.67: "⅔",
+    0.75: "¾",
+  };
+  const fracChar = fractions[Math.round(frac * 100) / 100];
+  if (frac === 0) return whole.toString();
+  if (whole === 0 && fracChar) return fracChar;
+  if (whole > 0 && fracChar) return `${whole}${fracChar}`;
+  return qty % 1 === 0 ? qty.toString() : qty.toFixed(1);
+}
+
+export function IngredientActions({ ingredientSections, scale = 1 }: IngredientActionsProps) {
+  const { toast } = useToast();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [modal, setModal] = useState<{
     name: string;
@@ -45,44 +72,44 @@ export function IngredientActions({ ingredientSections }: IngredientActionsProps
     if (!modal) return;
 
     if (modal.target === "pantry") {
-      // Use the categorize endpoint first for smart categorization
+      // Use the categorize endpoint first for smart categorization.
       let category = modal.category ?? "other";
       let aliases: string[] | undefined;
 
-      try {
-        const catRes = await fetch("/api/pantry/categorize", {
+      const catResult = await tryApi<{ results?: { category: string; aliases?: string[] }[] }>(
+        "/api/pantry/categorize",
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ names: [modal.name] }),
-        });
-        if (catRes.ok) {
-          const catData = await catRes.json();
-          const result = catData.results?.[0];
-          if (result) {
-            category = result.category;
-            aliases = result.aliases;
-          }
+        },
+      );
+      if (catResult.ok) {
+        const result = catResult.data.results?.[0];
+        if (result) {
+          category = result.category;
+          aliases = result.aliases;
         }
-      } catch {
-        // Fall back to the ingredient's category
       }
 
-      const res = await fetch("/api/pantry", {
+      const res = await tryApi("/api/pantry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: modal.name,
-          category,
-          aliases,
-        }),
+        body: JSON.stringify({ name: modal.name, category, aliases }),
       });
 
-      if (res.ok || res.status === 409) {
+      // 409 means it already exists in the pantry — treat as success.
+      if (res.ok || (!res.ok && res.error.status === 409)) {
         setAdded((prev) => ({ ...prev, [modal.key]: "pantry" }));
+        toast(`${modal.name} is in your pantry`, "success");
+      } else {
+        toast(res.error.message || "Couldn't add to pantry", "error");
+        setModal(null);
+        return;
       }
     } else {
-      // Add as a weekly staple
-      const res = await fetch("/api/staples", {
+      // Add as a weekly staple.
+      const res = await tryApi("/api/staples", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -95,6 +122,11 @@ export function IngredientActions({ ingredientSections }: IngredientActionsProps
 
       if (res.ok) {
         setAdded((prev) => ({ ...prev, [modal.key]: "staples" }));
+        toast(`${modal.name} added to weekly staples`, "success");
+      } else {
+        toast(res.error.message || "Couldn't add staple", "error");
+        setModal(null);
+        return;
       }
     }
 
@@ -107,7 +139,7 @@ export function IngredientActions({ ingredientSections }: IngredientActionsProps
       {ingredientSections.map((section, si) => (
         <div key={si}>
           {section.header && (
-            <h4 className="mt-4 first:mt-0 mb-1 text-xs font-semibold uppercase tracking-wider text-muted">
+            <h4 className="mt-4 mb-1 text-xs font-semibold uppercase tracking-wider text-muted first:mt-0">
               {section.header}
             </h4>
           )}
@@ -123,20 +155,18 @@ export function IngredientActions({ ingredientSections }: IngredientActionsProps
                     type="button"
                     onClick={() => toggleExpand(key)}
                     className={`flex w-full items-baseline gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
-                      isExpanded
-                        ? "bg-tag-bg"
-                        : "hover:bg-tag-bg/50"
+                      isExpanded ? "bg-tag-bg" : "hover:bg-tag-bg/50"
                     }`}
                   >
                     <span className="font-medium text-foreground">
-                      {ing.quantity} {ing.unit}
+                      {formatQuantity(ing.quantity * scale)} {ing.unit}
                     </span>
                     <span className="flex-1 text-muted">{ing.name}</span>
                     {addedAs && (
-                      <span className="flex items-center gap-1 text-[10px] font-medium text-green-500">
+                      <Badge color={addedAs === "pantry" ? "success" : "accent"}>
                         <Check className="h-3 w-3" />
                         {addedAs === "pantry" ? "In pantry" : "Staple"}
-                      </span>
+                      </Badge>
                     )}
                   </button>
 
@@ -144,17 +174,15 @@ export function IngredientActions({ ingredientSections }: IngredientActionsProps
                     <div className="ml-2 flex gap-1.5 pb-1 pl-2 pt-0.5">
                       <button
                         onClick={() => openModal(ing, "pantry", key)}
-                        className="flex items-center gap-1.5 rounded-lg border border-card-border px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-green-500/50 hover:bg-green-500/5 hover:text-green-500"
+                        className="flex items-center gap-1.5 rounded-lg border border-card-border px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-success/50 hover:bg-success/5 hover:text-success"
                       >
-                        <Home className="h-3 w-3" />
-                        + Pantry
+                        <Home className="h-3 w-3" />+ Pantry
                       </button>
                       <button
                         onClick={() => openModal(ing, "staples", key)}
                         className="flex items-center gap-1.5 rounded-lg border border-card-border px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-accent/50 hover:bg-accent/5 hover:text-accent"
                       >
-                        <RotateCcw className="h-3 w-3" />
-                        + Staple
+                        <RotateCcw className="h-3 w-3" />+ Staple
                       </button>
                     </div>
                   )}
