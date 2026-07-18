@@ -33,7 +33,12 @@ export async function createTableIfNotExists(options: CreateTableOptions): Promi
       await client.send(
         new UpdateTableCommand({
           TableName: tableName,
-          AttributeDefinitions: [{ AttributeName: "GSI2PK", AttributeType: "S" }],
+          // Must declare every attribute the new index's KeySchema references,
+          // including PK even though the table already defines it.
+          AttributeDefinitions: [
+            { AttributeName: "GSI2PK", AttributeType: "S" },
+            { AttributeName: "PK", AttributeType: "S" },
+          ],
           GlobalSecondaryIndexUpdates: [
             {
               Create: {
