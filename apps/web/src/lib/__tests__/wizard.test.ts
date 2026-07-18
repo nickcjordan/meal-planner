@@ -280,7 +280,30 @@ describe("stableInputKey", () => {
         adaptationDecisions: [],
       },
     ];
-    expect(draftInputKey(draft)).toBe(stableInputKey(["r1"], ["Rice"]));
+    // Key includes the assigned day (day changes invalidate the roundout
+    // prefetch) and a trailing staples fingerprint (empty here).
+    expect(draftInputKey(draft)).toBe(`${stableInputKey(["r1@monday"], ["Rice"])}|`);
+  });
+
+  it("draftInputKey changes with day moves and staples arrival", () => {
+    const meal: DraftMealUI = {
+      day: "monday",
+      mealType: "dinner",
+      recipeId: "r1",
+      recipeName: "Tacos",
+      complexity: "standard",
+      dayReasoning: "",
+      sides: [],
+      adaptationDecisions: [],
+    };
+    const base = draftInputKey([meal]);
+    expect(draftInputKey([{ ...meal, day: "friday" }])).not.toBe(base);
+    expect(
+      draftInputKey(
+        [meal],
+        [{ name: "Milk", style: "specific", category: "dairy", frequency: "weekly" }],
+      ),
+    ).not.toBe(base);
   });
 });
 

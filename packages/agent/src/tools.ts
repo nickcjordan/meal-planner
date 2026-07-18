@@ -11,7 +11,6 @@ import {
   getRecentSessions,
   getSession,
   getSessionByWeek,
-  createSession,
   updateSession,
   saveFeedback,
   getFeedbackForSession,
@@ -69,10 +68,6 @@ import {
 } from "@meal-planner/import";
 import { getWeeklyAd } from "@meal-planner/heb";
 import type {
-  DayOfWeek,
-  MealType,
-  PlannedMeal,
-  PlannedSide,
   CreateRecipeInput,
   PreferenceType,
   AdaptationLeniency,
@@ -319,88 +314,6 @@ export const updatePantryItemTool = tool(
       return { content: [{ type: "text" as const, text: `Failed to update pantry item "${args.name}"` }] };
     }
     return { content: [{ type: "text" as const, text: `Updated pantry item: ${updated.name} (${updated.category})` }] };
-  },
-);
-
-export const saveMealPlan = tool(
-  "save_meal_plan",
-  "Save the confirmed meal plan for the week. ONLY call this when the user has explicitly confirmed they are happy with the plan.",
-  {
-    weekOf: z.string().describe("ISO date string for the Monday of the target week (e.g. '2026-04-13')"),
-    meals: z.array(
-      z.object({
-        day: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
-        mealType: z.enum(["dinner", "lunch", "breakfast"]),
-        recipeId: z.string(),
-        sides: z.array(z.object({
-          sideId: z.string().optional().describe("Side ID from the library (omit for inline sides)"),
-          sideName: z.string().describe("Display name of the side"),
-          sideCategory: z.enum(["green", "starch", "grain", "bread", "legume", "salad", "other"]).describe("Category of the side"),
-          complexity: z.enum(["effortless", "simple", "prepared"]).describe("Side complexity level"),
-          ingredients: z.array(z.object({
-            name: z.string(),
-            quantity: z.number(),
-            unit: z.string(),
-            category: z.string().optional(),
-          })).optional().describe("Ingredients for inline sides (omit for library sides)"),
-          baseIngredient: z.string().optional().describe("Base ingredient grouping key (e.g. 'broccoli')"),
-        })).optional().describe("0-2 sides for this meal, matching the confirmed sides. Omit for self-contained meals."),
-      }),
-    ).describe("The confirmed meals for the week"),
-    summary: z.string().describe("Brief summary of this week's plan and reasoning"),
-  },
-  async (args) => {
-    const existing = await getSessionByWeek(args.weekOf);
-
-    // Preserve sides through the save path — map the presented side shape into
-    // stored PlannedSide (ref when a library sideId is present, otherwise inline
-    // with its ingredients).
-    const meals: PlannedMeal[] = args.meals.map((m) => ({
-      day: m.day as DayOfWeek,
-      mealType: m.mealType as MealType,
-      recipeId: m.recipeId,
-      ...(m.sides
-        ? {
-            sides: m.sides.map((s): PlannedSide =>
-              s.sideId
-                ? { kind: "ref" as const, sideId: s.sideId }
-                : {
-                    kind: "inline" as const,
-                    name: s.sideName,
-                    ingredients: s.ingredients ?? [],
-                    complexity: s.complexity as SideComplexity,
-                    baseIngredient: s.baseIngredient,
-                    sideCategory: s.sideCategory as SideCategory,
-                  },
-            ),
-          }
-        : {}),
-    }));
-
-    let session;
-    if (existing) {
-      session = await updateSession(existing.id, {
-        meals,
-        summary: args.summary,
-        status: existing.status === "completed" ? "completed" : "confirmed",
-      });
-    } else {
-      session = await createSession({
-        weekOf: args.weekOf,
-        status: "confirmed",
-        meals,
-        summary: args.summary,
-      });
-    }
-
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: `Meal plan saved for week of ${args.weekOf}. Session ID: ${session!.id}`,
-        },
-      ],
-    };
   },
 );
 
@@ -1640,7 +1553,6 @@ export const allTools = [
   getShoppingListTool,
   getSessionTool,
   // Write tools
-  saveMealPlan,
   manageGroceryStaple,
   saveFeedbackTool,
   addPantryItemTool,

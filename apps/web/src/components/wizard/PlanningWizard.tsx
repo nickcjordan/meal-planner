@@ -392,7 +392,7 @@ export function PlanningWizard({ weekOf }: PlanningWizardProps) {
                   step: opts.advanceOnDraft ? 2 : prev.step,
                 }));
                 // Prefetch the roundout against a fresh session, keyed by inputKey.
-                const key = draftInputKey(draft);
+                const key = draftInputKey(draft, staplesDueRef.current);
                 prefetchRef.current = null;
                 void runTurn(buildRoundoutMessage(weekOf, draft, staplesDueRef.current), {
                   resume: false,
@@ -403,7 +403,7 @@ export function PlanningWizard({ weekOf }: PlanningWizardProps) {
               }
 
               case "week_roundout": {
-                const key = opts.inputKey ?? draftInputKey(stateRef.current.draft ?? []);
+                const key = opts.inputKey ?? draftInputKey(stateRef.current.draft ?? [], staplesDueRef.current);
                 const roundout = mapWeekRoundout(event.payload as WeekRoundoutPayload, key);
                 if (opts.isPrefetch) {
                   prefetchRef.current = { inputKey: key, roundout };
@@ -558,7 +558,7 @@ export function PlanningWizard({ weekOf }: PlanningWizardProps) {
 
   function continueToRoundout() {
     const draft = stateRef.current.draft ?? [];
-    const key = draftInputKey(draft);
+    const key = draftInputKey(draft, staplesDueRef.current);
     if (prefetchRef.current && prefetchRef.current.inputKey === key) {
       setState((prev) => ({ ...prev, roundout: prefetchRef.current!.roundout, step: 3 }));
       return;
@@ -882,7 +882,9 @@ export function PlanningWizard({ weekOf }: PlanningWizardProps) {
   function handleAutoPick() {
     const ids = autoPick(gridRef.current, 5);
     setState((prev) => {
-      const selectedMeta = { ...prev.selectedMeta };
+      // Rebuild selectedMeta from ONLY the picked ids — carrying prior entries
+      // forward would leave stale meta skewing the meters (Codex review, Low).
+      const selectedMeta: WizardState["selectedMeta"] = {};
       for (const id of ids) {
         const card = gridRef.current.find((c) => c.id === id);
         if (card) {

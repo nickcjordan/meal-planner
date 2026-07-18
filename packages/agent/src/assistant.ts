@@ -3,18 +3,11 @@ import { createMealPlannerServer } from "./server.js";
 import { buildAssistantPrompt } from "./assistant-prompt.js";
 import { allTools } from "./tools.js";
 
-/** Planner-only tools the general assistant must never invoke. `save_meal_plan`
- *  would write a meals-only session over a legitimately saved week. Enforce an
- *  explicit allowlist rather than a wildcard. */
-const ASSISTANT_EXCLUDED_TOOLS = new Set([
-  "save_meal_plan",
-]);
-
-/** Every meal-planner-db tool the assistant is allowed to call — the full tool
- *  set minus the planner-only tools above, prefixed for the MCP server. */
-const ASSISTANT_ALLOWED_TOOLS = allTools
-  .filter((t) => !ASSISTANT_EXCLUDED_TOOLS.has(t.name))
-  .map((t) => `mcp__meal-planner-db__${t.name}`);
+/** Every meal-planner-db tool the assistant is allowed to call, prefixed for
+ *  the MCP server. (The old planner-only `save_meal_plan` tool that this list
+ *  used to filter out was deleted outright — no session-writing tool exists in
+ *  the registry anymore.) */
+const ASSISTANT_ALLOWED_TOOLS = allTools.map((t) => `mcp__meal-planner-db__${t.name}`);
 
 export type AssistantStreamEvent =
   | { type: "text_delta"; text: string }

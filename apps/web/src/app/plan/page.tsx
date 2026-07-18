@@ -8,7 +8,9 @@ import { getPlanningMonday } from "@/lib/week";
 function PlanPageContent() {
   const searchParams = useSearchParams();
   const weekOf = searchParams.get("week") ?? getPlanningMonday();
-  return <PlanningWizard weekOf={weekOf} />;
+  // key: a ?week= change fully remounts the wizard — its restore/persist state
+  // machine is per-week and must never mix weeks (Codex review, Med).
+  return <PlanningWizard key={weekOf} weekOf={weekOf} />;
 }
 
 export default function PlanPage() {

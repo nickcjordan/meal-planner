@@ -645,13 +645,14 @@ export function FinalReviewStep({
             size="lg"
             onClick={onConfirm}
             loading={saving}
-            disabled={saving}
+            disabled={saving || preview.loading || preview.stale}
           >
             <Check className="h-4 w-4" /> Confirm &amp; Save Plan
           </Button>
           <span className="text-[11px] text-muted">
-            Saves your week and adds {preview.count} item{preview.count === 1 ? "" : "s"} to the
-            grocery list
+            {preview.loading || preview.stale
+              ? "Updating the list with your latest changes…"
+              : `Saves your week and adds ${preview.count} item${preview.count === 1 ? "" : "s"} to the grocery list`}
           </span>
         </div>
       </div>

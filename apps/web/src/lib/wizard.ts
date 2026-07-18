@@ -273,9 +273,22 @@ export function buildDraftMessage(
   ].join("\n");
 }
 
+/** Sides carry their identity (library sideId or inline ingredient names) so a
+ *  FRESH session can do exact carryover/ingredient math without guessing. */
+function formatDraftSide(s: DraftSideSuggestion & { accepted: boolean }): string {
+  if (s.sideId) return `${s.sideName} [sideId ${s.sideId}]`;
+  const ing = (s.ingredients ?? []).map((i) => `${i.quantity} ${i.unit} ${i.name}`).join(", ");
+  return `${s.sideName} [inline: ${ing || "no ingredients"}]`;
+}
+
 function formatDraftLine(m: DraftMealUI): string {
-  const sides = m.sides.filter((s) => s.accepted).map((s) => s.sideName);
-  return `${m.day}: ${m.recipeName}${sides.length ? ` (+ ${sides.join(", ")})` : ""}`;
+  const sides = m.sides.filter((s) => s.accepted).map(formatDraftSide);
+  const applied = m.adaptationDecisions.filter((a) => a.applied).map((a) => a.adaptationName);
+  return (
+    `${m.day} (${m.mealType || "dinner"}): ${m.recipeName} [recipeId ${m.recipeId}]` +
+    (sides.length ? ` + sides: ${sides.join("; ")}` : "") +
+    (applied.length ? ` [adaptations applied: ${applied.join(", ")}]` : "")
+  );
 }
 
 function formatStaplesDue(staplesDue: RoundoutStapleLine[]): string {
@@ -302,6 +315,7 @@ export function buildRoundoutMessage(
     "PHASE:ROUNDOUT",
     `weekOf: ${weekOf}`,
     `Final draft: [${draftStr}]`,
+    "Recipe IDs above are exact — use get_recipe_details for precise ingredient quantities when doing carryover math.",
     `Staples due this week (deterministic, include as-is in groceryStaples): [${formatStaplesDue(staplesDue)}]`,
     "Analyze carryovers, deals, patterns; respond via present_week_roundout.",
   ].join("\n");
@@ -594,11 +608,18 @@ export function stableInputKey(selectedRecipeIds: string[], acceptedSideNames: s
   return `${ids.join(",")}|${sides.join(",")}`;
 }
 
-/** Convenience: derive the stable key straight from a draft (accepted sides). */
-export function draftInputKey(draft: DraftMealUI[]): string {
-  const ids = draft.map((m) => m.recipeId);
+/** Convenience: derive the stable key straight from a draft. Includes each
+ *  meal's assigned DAY (day changes affect roundout reasoning) and a fingerprint
+ *  of the staples-due list (a prefetch fired before staples loaded must not be
+ *  reused once they arrive). */
+export function draftInputKey(draft: DraftMealUI[], staplesDue: RoundoutStapleLine[] = []): string {
+  const ids = draft.map((m) => `${m.recipeId}@${m.day}`);
   const sides = draft.flatMap((m) => m.sides.filter((s) => s.accepted).map((s) => s.sideName));
-  return stableInputKey(ids, sides);
+  const staples = staplesDue
+    .map((s) => s.name)
+    .sort()
+    .join(",");
+  return `${stableInputKey(ids, sides)}|${staples}`;
 }
 
 // ─── Payload → UI-state mappers ──────────────────────────────────────────────
