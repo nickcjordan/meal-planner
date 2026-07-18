@@ -29,6 +29,17 @@ function mealKey(meal: PlannedMeal) {
   return `${meal.day}-${meal.mealType}-${meal.recipeId}`;
 }
 
+/**
+ * Display names for a meal's sides. Inline sides carry their own `name`; ref
+ * sides only carry a `sideId` (the side record isn't loaded into this view), so
+ * they're skipped gracefully rather than rendering an opaque id.
+ */
+function sideNames(meal: PlannedMeal): string[] {
+  return (meal.sides ?? [])
+    .map((side) => (side.kind === "inline" ? side.name : undefined))
+    .filter((name): name is string => !!name && name.trim().length > 0);
+}
+
 export function WeekMealList({ session, recipes, feedbackSubmitted = false }: WeekMealListProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -38,6 +49,23 @@ export function WeekMealList({ session, recipes, feedbackSubmitted = false }: We
   const [saving, setSaving] = useState(false);
   const [moveOpen, setMoveOpen] = useState<string | null>(null);
   const moveRef = useRef<HTMLDivElement>(null);
+
+  // Latest meals array, so a toast Undo callback (which closes over an old
+  // render) can rebuild against current state rather than a stale snapshot.
+  const mealsRef = useRef<PlannedMeal[]>(meals);
+  mealsRef.current = meals;
+  // Single serialized write queue. Each PATCH is a whole-list read-modify-write
+  // on the server, so running two in parallel means the later one clobbers the
+  // earlier — chain them (same pattern as GroceryListView's writeQueueRef).
+  const writeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const enqueueWrite = (task: () => Promise<unknown>) => {
+    const run = writeQueueRef.current.then(() => task());
+    writeQueueRef.current = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
 
   const cooked = meals.filter((m) => m.cookedAt).length;
   const total = meals.length;
@@ -57,25 +85,27 @@ export function WeekMealList({ session, recipes, feedbackSubmitted = false }: We
    * `previous` and the error is surfaced. `onSuccess` runs only after the server
    * confirms the write.
    */
-  const persistMeals = async (
+  const persistMeals = (
     updated: PlannedMeal[],
     previous: PlannedMeal[],
     onSuccess?: () => void,
   ) => {
     setSaving(true);
-    try {
-      await api(`/api/sessions/${session.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ meals: updated }),
-      });
-      onSuccess?.();
-    } catch (err) {
-      setMeals(previous);
-      toast(err instanceof ApiError ? err.message : "Couldn't save changes", "error");
-    } finally {
-      setSaving(false);
-    }
+    return enqueueWrite(async () => {
+      try {
+        await api(`/api/sessions/${session.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ meals: updated }),
+        });
+        onSuccess?.();
+      } catch (err) {
+        setMeals(previous);
+        toast(err instanceof ApiError ? err.message : "Couldn't save changes", "error");
+      } finally {
+        setSaving(false);
+      }
+    });
   };
 
   const maybeCelebrateWeek = (updated: PlannedMeal[]) => {
@@ -101,7 +131,8 @@ export function WeekMealList({ session, recipes, feedbackSubmitted = false }: We
 
   const removeMeal = (key: string) => {
     const previous = meals;
-    const removed = previous.find((m) => mealKey(m) === key);
+    const originalIndex = previous.findIndex((m) => mealKey(m) === key);
+    const removed = originalIndex >= 0 ? previous[originalIndex] : undefined;
     const updated = previous.filter((m) => mealKey(m) !== key);
     setMeals(updated);
     void persistMeals(updated, previous);
@@ -110,8 +141,16 @@ export function WeekMealList({ session, recipes, feedbackSubmitted = false }: We
       action: {
         label: "Undo",
         onClick: () => {
-          setMeals(previous);
-          void persistMeals(previous, updated);
+          if (!removed) return;
+          // Re-insert ONLY the removed meal at its original index into the
+          // CURRENT list — not a whole-array snapshot — so any change made
+          // between removal and undo (e.g. marking another meal cooked) survives.
+          const current = mealsRef.current;
+          const insertAt = Math.min(originalIndex, current.length);
+          const restored = [...current];
+          restored.splice(insertAt, 0, removed);
+          setMeals(restored);
+          void persistMeals(restored, current);
         },
       },
     });
@@ -155,6 +194,24 @@ export function WeekMealList({ session, recipes, feedbackSubmitted = false }: We
             {rel.text}
           </span>
         )}
+      </div>
+    );
+  };
+
+  // Subtle muted chips listing a meal's sides (inline sides only — see sideNames).
+  const SideChips = ({ meal }: { meal: PlannedMeal }) => {
+    const names = sideNames(meal);
+    if (names.length === 0) return null;
+    return (
+      <div className="mt-1 flex flex-wrap gap-1">
+        {names.map((name, i) => (
+          <span
+            key={`${name}-${i}`}
+            className="rounded-full bg-tag-bg px-1.5 py-0.5 text-[10px] font-medium text-muted"
+          >
+            + {name}
+          </span>
+        ))}
       </div>
     );
   };
@@ -291,6 +348,7 @@ export function WeekMealList({ session, recipes, feedbackSubmitted = false }: We
                           {meal.mealType}
                         </div>
                         <div className="text-xs text-muted/50">Recipe unavailable — may have been deleted</div>
+                        <SideChips meal={meal} />
                       </div>
                       <MovePickerButton meal={meal} />
                       <button
@@ -330,6 +388,7 @@ export function WeekMealList({ session, recipes, feedbackSubmitted = false }: We
                           >
                             {recipe.name}
                           </Link>
+                          <SideChips meal={meal} />
                           <div className="mt-2 flex items-center gap-1.5 text-sm text-muted">
                             <Clock className="h-3.5 w-3.5" />
                             <span>{formatMinutes(recipe.prepTime + recipe.cookTime)} total</span>
@@ -382,6 +441,7 @@ export function WeekMealList({ session, recipes, feedbackSubmitted = false }: We
                         <span>&middot;</span>
                         <span>{formatMinutes(recipe.prepTime + recipe.cookTime)}</span>
                       </div>
+                      <SideChips meal={meal} />
                     </div>
                     <Badge
                       color={COMPLEXITY_COLOR[recipe.complexity] ?? "neutral"}

@@ -30,6 +30,7 @@ export {
   updateSession,
   getSessionByWeek,
   getRecentSessions,
+  deleteSession,
 } from "./sessions.js";
 
 export { saveFeedback, getFeedbackForSession, getRecipeHistory } from "./feedback.js";

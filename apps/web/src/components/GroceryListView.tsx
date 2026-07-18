@@ -922,8 +922,9 @@ export function GroceryListView() {
         })}
       </div>
 
-      {/* Sticky bottom add bar */}
-      <div className="sticky bottom-0 z-20 mt-4 bg-background pb-4 pt-3">
+      {/* Sticky bottom add bar. Right padding at phone widths keeps the Add
+          button clear of the floating assistant bubble. */}
+      <div className="sticky bottom-0 z-20 mt-4 bg-background pb-4 pt-3 max-sm:pr-16">
         <div className="flex gap-2">
           <input
             type="text"

@@ -5,11 +5,12 @@ import {
   listPantryItems,
   ensureGroceryList,
   saveGroceryList,
+  saveShoppingList,
   listDietaryAdaptations,
   listFamilyMembers,
   getSidesBatch,
 } from "@meal-planner/db";
-import type { GroceryList, GroceryListItem, GroceryItemSource, Ingredient, DietaryAdaptation, FamilyMember } from "@meal-planner/types";
+import type { GroceryList, GroceryListItem, GroceryItemSource, Ingredient, DietaryAdaptation, FamilyMember, ShoppingListItem } from "@meal-planner/types";
 import { filterPantryItems } from "@/lib/pantry-match";
 import { namesMatchExact } from "@meal-planner/import";
 import { randomUUID } from "crypto";
@@ -37,6 +38,11 @@ function sourceWeekOf(s: GroceryItemSource): string | undefined {
 /** Read the (optional) per-source contributed quantity off any source variant. */
 function sourceQuantity(s: GroceryItemSource): number | undefined {
   return "quantity" in s ? s.quantity : undefined;
+}
+
+/** Read the recipeId off a recipe source (only that variant carries one). */
+function sourceRecipeId(s: GroceryItemSource): string | undefined {
+  return s.type === "recipe" ? s.recipeId : undefined;
 }
 
 /**
@@ -479,6 +485,35 @@ export async function POST(request: Request) {
 
     list.mergedSessionIds.push(sessionId);
     const saved = await saveGroceryList(list);
+
+    // Persist a per-session snapshot of exactly what THIS plan contributed to the
+    // grocery list — the consolidated, pantry-filtered, exclusion-filtered items
+    // (`filtered`). Nothing else writes SHOPLIST records now that the legacy
+    // route is gone, so the history detail page reads this. Re-runs (including
+    // resync re-merges) overwrite it with the current contribution.
+    // deleteSession removes this row along with the rest of the session partition.
+    const snapshotItems: ShoppingListItem[] = filtered.map((item) => ({
+      name: item.name,
+      quantity: Math.round(item.quantity * 100) / 100,
+      unit: item.unit,
+      category: item.category,
+      recipeIds: [
+        ...new Set(
+          item.sources
+            .map(sourceRecipeId)
+            .filter((id): id is string => !!id),
+        ),
+      ],
+      checked: false,
+      isFlexible: item.isFlexible,
+      flexibleDescription: item.flexibleDescription,
+    }));
+    await saveShoppingList({
+      sessionId,
+      items: snapshotItems,
+      createdAt: now,
+      updatedAt: now,
+    });
 
     return NextResponse.json({ resynced, added: addedCount, merged: mergedCount, list: saved });
   } catch (err) {

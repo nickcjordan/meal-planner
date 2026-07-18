@@ -14,11 +14,6 @@ const nextConfig: NextConfig = {
         destination: "/settings/kitchen",
         permanent: true,
       },
-      {
-        source: "/settings",
-        destination: "/settings/kitchen",
-        permanent: false,
-      },
     ];
   },
   images: {

@@ -325,8 +325,17 @@ export default function FamilySettingsPage() {
     const oldKey = editingPrefKey;
     try {
       const selectedMember = members.find((m) => m.id === prefForm.memberId);
+      const newType = prefForm.type;
       const newKey = prefForm.key.trim().toLowerCase();
-      const keyChanged = !!oldKey && (oldKey.type !== prefForm.type || oldKey.key !== newKey);
+      // setPreference lowercases type+key server-side, so identity is the
+      // NORMALIZED (type,key) pair. Compare normalized values on both sides —
+      // comparing the raw stored key (e.g. legacy "Cilantro") against the
+      // lowercased new key would flag an unchanged edit as a rename and DELETE
+      // the record we just upserted. Only delete when the identity truly differs.
+      const keyChanged =
+        !!oldKey &&
+        (oldKey.type.toLowerCase() !== newType.toLowerCase() ||
+          oldKey.key.toLowerCase() !== newKey);
 
       // Safe edit: create/update the replacement FIRST (setPreference is an
       // upsert keyed on type+key), then delete the old record only after the

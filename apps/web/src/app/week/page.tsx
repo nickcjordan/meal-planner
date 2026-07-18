@@ -43,10 +43,13 @@ export default async function WeekPage() {
   const recipes: Record<string, Recipe> = Object.fromEntries(recipesMap);
   const feedbackSubmitted = existingFeedback.length > 0;
 
-  // Show review prompt if it's Thursday or later and no feedback yet
+  // Show review prompt only once at least one meal has been cooked (nothing to
+  // review otherwise), it's Thursday or later, and no feedback exists yet.
+  const anyCooked = session.meals.some((m) => m.cookedAt);
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0=Sun, 4=Thu
-  const showReviewPrompt = !feedbackSubmitted && (dayOfWeek >= 4 || dayOfWeek === 0);
+  const showReviewPrompt =
+    anyCooked && !feedbackSubmitted && (dayOfWeek >= 4 || dayOfWeek === 0);
 
   return (
     <div className="mx-auto w-full max-w-lg px-4 py-8">

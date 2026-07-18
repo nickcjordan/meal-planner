@@ -1,4 +1,4 @@
-import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, GetCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import type {
   PlanningSession,
   CreateSessionInput,
@@ -112,4 +112,30 @@ export async function getRecentSessions(limit: number = 8): Promise<PlanningSess
     .sort((a, b) => b.weekOf.localeCompare(a.weekOf));
 
   return sessions.slice(0, limit);
+}
+
+/** Delete a planning session and everything stored in its partition
+ *  (the session item itself, per-recipe FEEDBACK rows, and the SHOPLIST
+ *  snapshot). Recipe cook-HISTORY rows are intentionally kept — the meals
+ *  were still cooked even if the plan record is removed.
+ *  Returns false when no session exists for the id. */
+export async function deleteSession(id: string): Promise<boolean> {
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "PK = :pk",
+    ExpressionAttributeValues: { ":pk": `SESSION#${id}` },
+  });
+
+  if (items.length === 0) return false;
+
+  for (const item of items) {
+    await getDocClient().send(
+      new DeleteCommand({
+        TableName: TABLE_NAME,
+        Key: { PK: item.PK as string, SK: item.SK as string },
+      }),
+    );
+  }
+
+  return true;
 }

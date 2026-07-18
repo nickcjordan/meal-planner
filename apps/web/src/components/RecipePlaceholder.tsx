@@ -19,6 +19,46 @@ const GRADIENTS = [
   "from-warning/20 to-accent/15",
 ] as const;
 
+// Dish-name keywords, checked first and in this order so the most specific
+// match wins (e.g. "Chicken Noodle Soup" → soup before noodle). Matched as a
+// substring against the lowercased recipe name.
+const NAME_EMOJI: [string, string][] = [
+  ["hamburger", "🍔"],
+  ["burger", "🍔"],
+  ["taco", "🌮"],
+  ["tostada", "🌮"],
+  ["quesadilla", "🌮"],
+  ["fajita", "🌮"],
+  ["pizza", "🍕"],
+  ["soup", "🍲"],
+  ["stew", "🍲"],
+  ["chili", "🍲"],
+  ["salad", "🥗"],
+  ["sandwich", "🥪"],
+  ["wrap", "🥪"],
+  ["pasta", "🍝"],
+  ["ziti", "🍝"],
+  ["spaghetti", "🍝"],
+  ["orecchiette", "🍝"],
+  ["mac", "🍝"],
+  ["stir-fry", "🍜"],
+  ["stir fry", "🍜"],
+  ["lo mein", "🍜"],
+  ["noodle", "🍜"],
+  ["curry", "🍛"],
+  ["tikka", "🍛"],
+  ["masala", "🍛"],
+  ["fried rice", "🍚"],
+  ["rice bowl", "🍚"],
+  ["meatloaf", "🍖"],
+  ["meatball", "🍖"],
+  ["omelet", "🍳"],
+  ["frittata", "🍳"],
+  ["egg", "🍳"],
+  ["pancake", "🥞"],
+  ["waffle", "🥞"],
+];
+
 const PROTEIN_EMOJI: Record<string, string> = {
   chicken: "🍗",
   turkey: "🦃",
@@ -26,22 +66,23 @@ const PROTEIN_EMOJI: Record<string, string> = {
   steak: "🥩",
   pork: "🥓",
   bacon: "🥓",
+  sausage: "🥓",
   ham: "🍖",
   lamb: "🍖",
   fish: "🐟",
   salmon: "🐟",
+  tilapia: "🐟",
+  cod: "🐟",
   tuna: "🐟",
-  shrimp: "🍤",
-  prawn: "🍤",
+  shrimp: "🦐",
+  prawn: "🦐",
   seafood: "🦐",
   shellfish: "🦐",
   crab: "🦀",
-  egg: "🥚",
-  tofu: "🧊",
   bean: "🫘",
   beans: "🫘",
   lentil: "🫘",
-  cheese: "🧀",
+  tofu: "🫘",
 };
 
 const CUISINE_EMOJI: Record<string, string> = {
@@ -99,6 +140,14 @@ function hashString(input: string): number {
   return hash >>> 0;
 }
 
+/** Match a dish keyword at a word boundary so short keys don't hit substrings of
+ *  unrelated words ("egg" must not match "veggies"), while plurals/suffixes still
+ *  match ("taco" → "tacos", "egg" → "eggs"). `name` is expected lowercased. */
+function nameMatchesKeyword(name: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}`).test(name);
+}
+
 function lookup(map: Record<string, string>, value: string | undefined): string | undefined {
   if (!value) return undefined;
   const v = value.toLowerCase();
@@ -117,12 +166,22 @@ export interface RecipePlaceholderInput {
   tags?: string[];
 }
 
-/** Pick the most specific food emoji available for a recipe. */
-export function recipeEmoji({ primaryProtein, cuisineType, tags }: RecipePlaceholderInput): string {
-  const byProtein = lookup(PROTEIN_EMOJI, primaryProtein);
+/** Pick the most specific food emoji available for a recipe. Deterministic:
+ *  dish-name keywords → protein (field, then name) → cuisine (field, then name)
+ *  → first matching tag → default. */
+export function recipeEmoji({ name, primaryProtein, cuisineType, tags }: RecipePlaceholderInput): string {
+  // 1. Dish-name keywords are the strongest signal ("Beef Tacos" → 🌮, not 🥩).
+  const n = name.toLowerCase();
+  for (const [keyword, emoji] of NAME_EMOJI) {
+    if (nameMatchesKeyword(n, keyword)) return emoji;
+  }
+  // 2. Protein — the explicit field first, then the name as a fallback.
+  const byProtein = lookup(PROTEIN_EMOJI, primaryProtein) ?? lookup(PROTEIN_EMOJI, name);
   if (byProtein) return byProtein;
-  const byCuisine = lookup(CUISINE_EMOJI, cuisineType);
+  // 3. Cuisine — the explicit field first, then the name as a fallback.
+  const byCuisine = lookup(CUISINE_EMOJI, cuisineType) ?? lookup(CUISINE_EMOJI, name);
   if (byCuisine) return byCuisine;
+  // 4. Fall back to the first matching tag.
   for (const tag of tags ?? []) {
     const byTag = lookup(TAG_EMOJI, tag);
     if (byTag) return byTag;

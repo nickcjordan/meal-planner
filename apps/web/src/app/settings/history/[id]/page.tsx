@@ -7,6 +7,7 @@ import { WeekCalendar } from "@/components/WeekCalendar";
 import { StarRating } from "@/components/StarRating";
 import { HebProductInfo } from "@/components/HebProductInfo";
 import { PageHeader, Card, Badge, Button } from "@/components/ui";
+import { DeleteSessionButton } from "@/components/DeleteSessionButton";
 import { CATEGORY_ICONS, groupByCategory } from "@/lib/categories";
 import { formatWeekOf } from "@/lib/week";
 
@@ -18,19 +19,17 @@ const STATUS_COLOR = {
 
 function ShoppingSnapshot({ list }: { list: ShoppingList }) {
   const groups = groupByCategory(list.items);
-  const checkedCount = list.items.filter((i) => i.checked).length;
   const totalCount = list.items.length;
 
   return (
     <section className="mt-8">
       <div className="mb-2 flex items-center gap-2">
-        <h2 className="text-lg font-semibold text-foreground">Shopping list snapshot</h2>
-        <Badge color="neutral">
-          {checkedCount}/{totalCount} checked
-        </Badge>
+        <h2 className="text-lg font-semibold text-foreground">Items this plan added to the grocery list</h2>
+        <Badge color="neutral">{totalCount} item{totalCount !== 1 ? "s" : ""}</Badge>
       </div>
       <p className="mb-4 text-xs text-muted">
-        A historical record of this week&apos;s shopping list. Read-only.
+        A snapshot of the consolidated ingredients this week&apos;s plan contributed to your
+        grocery list, after pantry and exclusion filtering. Read-only.
       </p>
 
       <div className="space-y-4">
@@ -39,9 +38,7 @@ function ShoppingSnapshot({ list }: { list: ShoppingList }) {
             <div className="flex items-center gap-2 border-b border-card-border bg-tag-bg/30 px-5 py-3">
               <span className="text-base">{CATEGORY_ICONS[category.toLowerCase()] ?? "🛒"}</span>
               <h3 className="text-sm font-semibold capitalize text-foreground">{category}</h3>
-              <span className="text-xs text-muted">
-                {catItems.filter((i) => i.checked).length}/{catItems.length}
-              </span>
+              <span className="text-xs text-muted">{catItems.length}</span>
             </div>
             <div className="divide-y divide-card-border">
               {catItems.map((item, i) => (
@@ -130,6 +127,7 @@ export default async function SessionDetailPage({
                 <Button size="sm">Review Meals</Button>
               </Link>
             )}
+            <DeleteSessionButton sessionId={session.id} weekLabel={weekLabel} />
           </>
         }
       />

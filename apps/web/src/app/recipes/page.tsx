@@ -6,7 +6,7 @@ import type { Recipe } from "@meal-planner/types";
 import { RecipeCard } from "@/components/RecipeCard";
 import { SearchBar } from "@/components/SearchBar";
 import { Plus, Download, BookOpen, AlertTriangle, RotateCcw } from "lucide-react";
-import { Button, Select, ListSkeleton, EmptyState, PageHeader } from "@/components/ui";
+import { Button, Select, Skeleton, EmptyState, PageHeader } from "@/components/ui";
 import { tryApi } from "@/lib/api";
 
 type SortKey = "az" | "recent" | "rating" | "cooked";
@@ -19,6 +19,38 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 ];
 
 const TOP_TAGS = 12;
+
+/** Loading placeholder matching the RecipeCard silhouette: image block on top,
+ *  then title / description / meta / tag lines — laid out in the same 3-col grid
+ *  as the real content so the layout doesn't jump when recipes load. */
+function CardGridSkeleton() {
+  return (
+    <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="overflow-hidden rounded-xl border border-card-border bg-card shadow-sm"
+        >
+          <Skeleton className="h-40 w-full" />
+          <div className="p-5">
+            <Skeleton className="h-5 w-2/3" />
+            <Skeleton className="mt-2.5 h-3 w-full" />
+            <Skeleton className="mt-1.5 h-3 w-4/5" />
+            <div className="mt-3 flex gap-4">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-3 w-10" />
+            </div>
+            <div className="mt-3 flex gap-1.5">
+              <Skeleton className="h-5 w-12 rounded-full" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-5 w-10 rounded-full" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function ingredientNamesOf(recipe: Recipe): string[] {
   return (
@@ -126,11 +158,7 @@ export default function RecipesPage() {
         actions={headerActions}
       />
 
-      {status === "loading" && (
-        <div className="mt-6">
-          <ListSkeleton rows={6} />
-        </div>
-      )}
+      {status === "loading" && <CardGridSkeleton />}
 
       {status === "error" && (
         <EmptyState
