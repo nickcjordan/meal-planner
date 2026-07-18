@@ -5,16 +5,7 @@ import { ClipboardList, ChevronDown, ChevronRight, AlertTriangle, RotateCcw } fr
 import type { MealProposal } from "@meal-planner/agent";
 import type { Ingredient } from "@meal-planner/types";
 import { tryApi } from "@/lib/api";
-
-const DAY_SHORT: Record<string, string> = {
-  monday: "MON",
-  tuesday: "TUE",
-  wednesday: "WED",
-  thursday: "THU",
-  friday: "FRI",
-  saturday: "SAT",
-  sunday: "SUN",
-};
+import { DAY_SHORT } from "@/lib/week";
 
 const DAY_ORDER = [
   "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",

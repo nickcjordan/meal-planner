@@ -31,36 +31,32 @@ export function RecipeIngredientsSection({
     if (allItems.length === 0 || adding) return;
     setAdding(true);
 
-    const results = await Promise.all(
-      allItems.map((ing) =>
-        tryApi("/api/grocery/items", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: ing.name,
-            quantity: Math.round(ing.quantity * scale * 100) / 100 || 1,
-            unit: ing.unit,
-            category: ing.category ?? "other",
-          }),
-        }),
-      ),
-    );
+    // One bulk request: the grocery list is a single read-modify-write document,
+    // so N parallel POSTs would each clobber the others and drop items.
+    const result = await tryApi("/api/grocery/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: allItems.map((ing) => ({
+          name: ing.name,
+          quantity: Math.round(ing.quantity * scale * 100) / 100 || 1,
+          unit: ing.unit,
+          category: ing.category ?? "other",
+        })),
+      }),
+    });
 
     setAdding(false);
 
-    const failed = results.filter((r) => !r.ok).length;
-    const added = results.length - failed;
-
-    if (added > 0) {
+    if (result.ok) {
+      const added = allItems.length;
       toast(
-        `Added ${added} item${added === 1 ? "" : "s"} to your grocery list${
-          failed > 0 ? ` — ${failed} failed` : ""
-        }`,
-        failed > 0 ? "warning" : "success",
+        `Added ${added} item${added === 1 ? "" : "s"} to your grocery list`,
+        "success",
         { action: { label: "View list", onClick: () => router.push("/grocery") } },
       );
     } else {
-      toast("Couldn't add ingredients to your grocery list", "error");
+      toast(result.error.message || "Couldn't add ingredients to your grocery list", "error");
     }
   }
 

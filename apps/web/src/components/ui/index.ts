@@ -27,4 +27,4 @@ export type { EmptyStateProps } from "./EmptyState";
 export { PageHeader } from "./PageHeader";
 export type { PageHeaderProps } from "./PageHeader";
 
-export { Skeleton, ListSkeleton } from "./Skeleton";
+export { Skeleton, ListSkeleton, CardSkeleton } from "./Skeleton";

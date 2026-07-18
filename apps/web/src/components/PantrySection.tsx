@@ -17,8 +17,7 @@ import {
 import { CATEGORY_ORDER, CATEGORY_ICONS, groupByCategory } from "@/lib/categories";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { ListSkeleton } from "@/components/Skeleton";
-import { Button, Input, Textarea, EmptyState } from "@/components/ui";
+import { Button, Input, Textarea, EmptyState, ListSkeleton } from "@/components/ui";
 import { api, tryApi, ApiError } from "@/lib/api";
 
 // Token-styled raw <select> for the two inline, content-width selects that sit
@@ -652,7 +651,7 @@ export function PantrySection() {
                               <span className="ml-2 text-xs text-muted">— {item.notes}</span>
                             )}
                           </div>
-                          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          <div className="flex items-center gap-1">
                             <button
                               onClick={() => startEditing(item)}
                               className="rounded-lg p-1.5 text-muted hover:bg-tag-bg hover:text-foreground"

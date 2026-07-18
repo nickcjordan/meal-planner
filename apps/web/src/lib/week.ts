@@ -20,6 +20,21 @@ export const DAY_LABELS: Record<DayOfWeek, string> = {
   sunday: "Sunday",
 };
 
+/**
+ * Uppercase 3-letter day labels (e.g. "MON"), keyed by lowercase day name.
+ * `Record<string, string>` (not `DayOfWeek`-keyed) so it can be indexed by the
+ * plain-`string` `day` fields that meal proposals carry.
+ */
+export const DAY_SHORT: Record<string, string> = {
+  monday: "MON",
+  tuesday: "TUE",
+  wednesday: "WED",
+  thursday: "THU",
+  friday: "FRI",
+  saturday: "SAT",
+  sunday: "SUN",
+};
+
 export function getCurrentMonday(): string {
   const now = new Date();
   const day = now.getDay();

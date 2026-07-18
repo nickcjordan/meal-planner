@@ -3,9 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { Loader2, RefreshCw, Store, Wifi, WifiOff, Newspaper, Search, AlertCircle } from "lucide-react";
 import type { HebStoreConfig, WeeklyAdData } from "@meal-planner/types";
-import { CardSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
-import { Button, Input, Card, Badge, EmptyState, PageHeader } from "@/components/ui";
+import { Button, Input, Card, Badge, EmptyState, PageHeader, CardSkeleton } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { decodeHtmlEntities } from "@/lib/format";
 

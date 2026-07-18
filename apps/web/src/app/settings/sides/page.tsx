@@ -11,8 +11,7 @@ import type {
 } from "@meal-planner/types";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { ListSkeleton } from "@/components/Skeleton";
-import { Button, Input, Select, PageHeader, EmptyState } from "@/components/ui";
+import { Button, Input, Select, PageHeader, EmptyState, ListSkeleton } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 
 const SIDE_CATEGORIES: { value: SideCategory; label: string }[] = [
@@ -238,7 +237,7 @@ export default function SidesSettingsPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={() => setEditingId(side.id)}
                             className="rounded p-1.5 text-muted hover:bg-tag-bg hover:text-foreground"

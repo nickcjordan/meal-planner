@@ -14,8 +14,7 @@ import {
 import type { IngredientSwap } from "@meal-planner/types";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { ListSkeleton } from "@/components/Skeleton";
-import { Button, Input, Select, EmptyState } from "@/components/ui";
+import { Button, Input, Select, EmptyState, ListSkeleton } from "@/components/ui";
 import { api, tryApi, ApiError } from "@/lib/api";
 
 const CATEGORIES = [

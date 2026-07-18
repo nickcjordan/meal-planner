@@ -21,20 +21,10 @@ import {
   ChevronDown,
 } from "lucide-react";
 import type { MealProposal, ProposedAdaptation, ProposedSuggestion, MealAlternativesPayload, AlternativeMeal } from "@meal-planner/agent";
-import { formatWeekOf } from "@/lib/week";
+import { formatWeekOf, DAY_SHORT } from "@/lib/week";
 import { Button, ConfirmDialog, Modal } from "@/components/ui";
 import { useToast } from "./Toast";
 import { api, ApiError } from "@/lib/api";
-
-const DAY_SHORT: Record<string, string> = {
-  monday: "MON",
-  tuesday: "TUE",
-  wednesday: "WED",
-  thursday: "THU",
-  friday: "FRI",
-  saturday: "SAT",
-  sunday: "SUN",
-};
 
 const DAY_FULL: Record<string, string> = {
   monday: "Monday",

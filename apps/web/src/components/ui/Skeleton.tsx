@@ -12,6 +12,17 @@ export function Skeleton({ className }: { className?: string }) {
   );
 }
 
+/** Convenience: a bordered card block with a title + two body lines. */
+export function CardSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={clsx("rounded-xl border border-card-border bg-card p-6", className)}>
+      <Skeleton className="h-4 w-1/3" />
+      <Skeleton className="mt-3 h-3 w-2/3" />
+      <Skeleton className="mt-2 h-3 w-1/2" />
+    </div>
+  );
+}
+
 /** Convenience: a stack of card-shaped skeleton rows. */
 export function ListSkeleton({ rows = 4, className }: { rows?: number; className?: string }) {
   return (

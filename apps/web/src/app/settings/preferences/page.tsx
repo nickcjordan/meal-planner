@@ -31,8 +31,7 @@ import type {
 } from "@meal-planner/types";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { CardSkeleton } from "@/components/Skeleton";
-import { Button, Input, Select, Card, PageHeader, EmptyState } from "@/components/ui";
+import { Button, Input, Select, Card, PageHeader, EmptyState, CardSkeleton } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 
 // ─── Constants ───────────────────────────────────────────────
