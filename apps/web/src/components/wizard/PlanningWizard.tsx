@@ -284,7 +284,6 @@ export function PlanningWizard({ weekOf }: PlanningWizardProps) {
             claudeSessionId: opts.resume ? stateRef.current.plannerSessionId : null,
             weekOf,
             message,
-            mode: "wizard",
           }),
         });
         if (!response.ok || !response.body) {

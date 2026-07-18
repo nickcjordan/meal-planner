@@ -344,7 +344,7 @@ export const saveMealPlan = tool(
             category: z.string().optional(),
           })).optional().describe("Ingredients for inline sides (omit for library sides)"),
           baseIngredient: z.string().optional().describe("Base ingredient grouping key (e.g. 'broccoli')"),
-        })).optional().describe("0-2 sides for this meal, matching the sides presented in present_meal_plan. Omit for self-contained meals."),
+        })).optional().describe("0-2 sides for this meal, matching the confirmed sides. Omit for self-contained meals."),
       }),
     ).describe("The confirmed meals for the week"),
     summary: z.string().describe("Brief summary of this week's plan and reasoning"),
@@ -352,9 +352,9 @@ export const saveMealPlan = tool(
   async (args) => {
     const existing = await getSessionByWeek(args.weekOf);
 
-    // Preserve sides through the save path — map the present_meal_plan side
-    // shape into stored PlannedSide (ref when a library sideId is present,
-    // otherwise inline with its ingredients).
+    // Preserve sides through the save path — map the presented side shape into
+    // stored PlannedSide (ref when a library sideId is present, otherwise inline
+    // with its ingredients).
     const meals: PlannedMeal[] = args.meals.map((m) => ({
       day: m.day as DayOfWeek,
       mealType: m.mealType as MealType,
@@ -400,177 +400,6 @@ export const saveMealPlan = tool(
           text: `Meal plan saved for week of ${args.weekOf}. Session ID: ${session!.id}`,
         },
       ],
-    };
-  },
-);
-
-export const presentMealPlan = tool(
-  "present_meal_plan",
-  "Present a proposed meal plan to the user in a structured format. Call this tool EVERY TIME you suggest or revise a weekly meal plan, instead of writing it as markdown text. The user will see this as a visual card layout. ALL analysis (protein rotation, cuisine variety, time balance, shopping strategy) MUST go in the strategy array, NOT in the chat message.",
-  {
-    meals: z.array(
-      z.object({
-        day: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
-        mealType: z.enum(["dinner", "lunch", "breakfast"]),
-        recipeId: z.string().describe("The recipe ID from the database"),
-        recipeName: z.string().describe("The recipe name for display"),
-        complexity: z.enum(["staple", "standard", "involved"]).describe("The recipe's complexity level"),
-        reasoning: z.string().describe("Brief reason for this choice (e.g. 'Quick weeknight meal, pairs well with Tuesday's leftovers')"),
-        adaptations: z.array(z.object({
-          adaptationName: z.string().describe("e.g. 'Lactose Intolerance'"),
-          memberName: z.string().describe("e.g. 'Nick'"),
-          applied: z.boolean().describe("Whether the adaptation is being applied to this meal"),
-          swaps: z.array(z.object({
-            from: z.string().describe("Original ingredient"),
-            to: z.string().describe("Substituted ingredient"),
-            quality: z.enum(["exact", "approximate"]),
-          })).optional().describe("Specific swaps being made (when applied=true)"),
-          skipReason: z.string().optional().describe("Why not adapting (when applied=false)"),
-          skipNote: z.string().optional().describe("What to do instead (e.g. 'Take Lactaid pill')"),
-        })).optional().describe("Dietary adaptation decisions for this meal. Include for every meal that has applicable adaptations."),
-        sides: z.array(z.object({
-          sideId: z.string().optional().describe("Side ID from the library (omit for inline sides)"),
-          sideName: z.string().describe("Display name of the side"),
-          sideCategory: z.enum(["green", "starch", "grain", "bread", "legume", "salad", "other"]).describe("Category of the side"),
-          complexity: z.enum(["effortless", "simple", "prepared"]).describe("Side complexity level"),
-          reasoning: z.string().optional().describe("Why this side pairs well with the main"),
-          ingredients: z.array(z.object({
-            name: z.string(),
-            quantity: z.number(),
-            unit: z.string(),
-            category: z.string().optional(),
-          })).optional().describe("Ingredients for inline sides (omit for library sides)"),
-          baseIngredient: z.string().optional().describe("Base ingredient grouping key (e.g. 'broccoli')"),
-        })).optional().describe("0-2 sides for this meal. Most dinners should have 1-2 sides (green + starch). Omit for self-contained meals (soups, stews, rich pasta)."),
-      }),
-    ).describe("The proposed meals for the week"),
-    complexityMix: z.object({
-      staple: z.number().describe("Number of staple meals"),
-      standard: z.number().describe("Number of standard meals"),
-      involved: z.number().describe("Number of involved meals"),
-    }).optional().describe("Count of meals by complexity level"),
-    proteinRotation: z.array(z.string()).optional().describe("Protein type for each day in order, e.g. ['beef', 'salmon', 'beef', 'shrimp', 'chicken', 'pasta', 'chicken']"),
-    cuisineVariety: z.array(z.string()).optional().describe("Cuisine type for each day in order, e.g. ['asian', 'seafood', 'mexican', 'italian', 'asian', 'italian', 'roast']"),
-    cookTimes: z.array(z.object({
-      day: z.string(),
-      minutes: z.number(),
-    })).optional().describe("Total cook time for each day in order"),
-    extras: z.array(
-      z.object({
-        name: z.string().describe("Name of the extra item (e.g. 'Homemade Chocolate Cake', 'Veggie Tray')"),
-        description: z.string().optional().describe("Brief description"),
-        ingredients: z.array(
-          z.object({
-            name: z.string(),
-            quantity: z.number(),
-            unit: z.string(),
-            category: z.string().optional(),
-          }),
-        ).describe("Ingredients needed for this extra"),
-      }),
-    ).optional().describe("Extra items not tied to a specific meal — desserts, snacks, baking projects, beverages, etc. Use your general recipe knowledge to generate full ingredient lists for these. They do NOT need to be in the recipe database."),
-    shoppingHighlights: z.array(z.object({
-      ingredient: z.string().describe("The shared ingredient name"),
-      days: z.array(z.string()).describe("Day abbreviations that use this ingredient, e.g. ['mon', 'tue', 'thu']"),
-      buyNote: z.string().describe("Brief buy recommendation, e.g. 'Buy 1 whole head'"),
-    })).optional().describe("Shared ingredients across meals — ingredient name, which days use it, and buy recommendation"),
-    unusedRecipes: z.array(z.object({
-      name: z.string(),
-      complexity: z.enum(["staple", "standard", "involved"]),
-    })).optional().describe("Recipes not used this week that are good swap candidates"),
-    groceryStaples: z.array(z.object({
-      name: z.string().describe("Name of the staple item"),
-      style: z.enum(["specific", "flexible"]).describe("specific = exact item, flexible = category"),
-      category: z.string().describe("Grocery category"),
-      quantity: z.number().optional().describe("For specific items"),
-      unit: z.string().optional().describe("For specific items"),
-      description: z.string().optional().describe("For flexible items — shopper guidance"),
-      frequency: z.enum(["weekly", "biweekly", "monthly", "as-needed"]).describe("Purchase frequency"),
-    })).optional().describe("Grocery staples to include in this week's plan. Auto-include weekly staples, include biweekly/monthly based on cadence. Each item can be removed by the user."),
-    carryoverItems: z.array(z.object({
-      name: z.string().describe("Ingredient name"),
-      estimatedQuantity: z.number().describe("Estimated remaining quantity"),
-      unit: z.string().describe("Unit of measurement"),
-      source: z.object({
-        weekOf: z.string().describe("Week the ingredient was originally purchased"),
-        recipeName: z.string().describe("Recipe it was purchased for"),
-        purchasedQuantity: z.number().describe("How much was purchased"),
-        usedQuantity: z.number().describe("How much the recipe used"),
-      }).describe("Where the leftover came from"),
-      neededFor: z.object({
-        day: z.string().describe("Day of the week this ingredient is needed"),
-        recipeName: z.string().describe("Recipe that needs this ingredient"),
-        requiredQuantity: z.number().describe("How much is needed"),
-      }).describe("What this week's recipe needs it for"),
-    })).optional().describe("Ingredients assumed to be on hand from prior weeks. These will NOT be on the shopping list. The user must confirm they still have each item."),
-    suggestions: z.array(z.object({
-      id: z.string().describe("Unique ID for this suggestion"),
-      type: z.enum(["deal-meal", "recurring-item", "pattern-detected", "smart-promotion"]).describe("Type of suggestion"),
-      title: z.string().describe("Short title for the suggestion card"),
-      description: z.string().describe("Details about the suggestion"),
-      rationale: z.string().describe("Why this is being suggested"),
-      item: z.object({
-        name: z.string(),
-        style: z.enum(["specific", "flexible"]),
-        category: z.string(),
-        quantity: z.number().optional(),
-        unit: z.string().optional(),
-        description: z.string().optional(),
-        frequency: z.enum(["weekly", "biweekly", "monthly", "as-needed"]),
-      }).optional().describe("For item-type suggestions, the staple item details"),
-    })).optional().describe("Suggestions for the user that are NOT part of the plan yet — deal meals, items they might need based on patterns, smart promotions to add items as staples. Each has an [+ Add] button."),
-  },
-  async () => {
-    return {
-      content: [{ type: "text" as const, text: "Meal plan presented to user." }],
-    };
-  },
-);
-
-export const presentAlternatives = tool(
-  "present_alternatives",
-  "Present alternative meal options for slots the user wants to re-spin. Call this when the user selects meals to replace and asks for alternatives. Present 3 alternatives per slot so the user can pick their preferred replacement inline.",
-  {
-    slots: z.array(z.object({
-      day: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
-      mealType: z.enum(["dinner", "lunch", "breakfast"]),
-      alternatives: z.array(z.object({
-        recipeId: z.string().describe("The recipe ID from the database"),
-        recipeName: z.string().describe("The recipe name for display"),
-        complexity: z.enum(["staple", "standard", "involved"]).describe("The recipe's complexity level"),
-        reasoning: z.string().describe("Why this is a good replacement, considering the rest of the plan"),
-        adaptations: z.array(z.object({
-          adaptationName: z.string(),
-          memberName: z.string(),
-          applied: z.boolean(),
-          swaps: z.array(z.object({
-            from: z.string(),
-            to: z.string(),
-            quality: z.enum(["exact", "approximate"]),
-          })).optional(),
-          skipReason: z.string().optional(),
-          skipNote: z.string().optional(),
-        })).optional(),
-        sides: z.array(z.object({
-          sideId: z.string().optional(),
-          sideName: z.string(),
-          sideCategory: z.enum(["green", "starch", "grain", "bread", "legume", "salad", "other"]),
-          complexity: z.enum(["effortless", "simple", "prepared"]),
-          reasoning: z.string().optional(),
-          ingredients: z.array(z.object({
-            name: z.string(),
-            quantity: z.number(),
-            unit: z.string(),
-            category: z.string().optional(),
-          })).optional(),
-          baseIngredient: z.string().optional(),
-        })).optional().describe("Suggested sides for this alternative"),
-      })).min(2).max(4).describe("2-4 alternative meals for this slot"),
-    })).describe("Slots the user wants to replace, each with alternative options"),
-  },
-  async () => {
-    return {
-      content: [{ type: "text" as const, text: "Alternatives presented to user." }],
     };
   },
 );
@@ -1577,17 +1406,15 @@ export const manageIngredientSwapTool = tool(
   },
 );
 
-// --- Wizard present tools (collaborative planning wizard, mode: "wizard") ---
+// --- Wizard present tools (collaborative planning wizard) ---
 //
-// These three no-op present tools mirror present_meal_plan: each handler returns
-// a short static string, and packages/agent/session.ts intercepts the tool call
-// to forward its input as a StreamEvent. The inferred payload types below are
-// re-exported from the package index and consumed by the wizard UI.
+// These three no-op present tools each return a short static string, and
+// packages/agent/session.ts intercepts the tool call to forward its input as a
+// StreamEvent. The inferred payload types below are re-exported from the package
+// index and consumed by the wizard UI.
 //
-// Shapes are FROZEN per scratchpad/phase1-shared-contracts.md §4. These are
-// ADDITIVE — the legacy present_meal_plan / present_alternatives tools are
-// unchanged. Note that unlike the legacy present_meal_plan suggestion enum,
-// the roundout suggestion enum below intentionally includes "pantry-promotion".
+// Shapes are FROZEN per scratchpad/phase1-shared-contracts.md §4. Note that the
+// roundout suggestion enum below intentionally includes "pantry-promotion".
 
 const wizardIngredientSchema = z.object({
   name: z.string(),
@@ -1747,8 +1574,8 @@ const wizardCarryoverSchema = z.object({
 
 const wizardSuggestionSchema = z.object({
   id: z.string(),
-  // Unlike the legacy present_meal_plan suggestion enum, this one includes
-  // "pantry-promotion" (contract §4 requires it).
+  // The roundout suggestion enum includes "pantry-promotion" (contract §4
+  // requires it).
   type: z.enum([
     "deal-meal",
     "recurring-item",
@@ -1814,8 +1641,6 @@ export const allTools = [
   getSessionTool,
   // Write tools
   saveMealPlan,
-  presentMealPlan,
-  presentAlternatives,
   manageGroceryStaple,
   saveFeedbackTool,
   addPantryItemTool,

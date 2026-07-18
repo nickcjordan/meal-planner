@@ -4,11 +4,10 @@ const HEARTBEAT_INTERVAL_MS = 5000;
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { claudeSessionId, weekOf, message, mode } = body as {
+  const { claudeSessionId, weekOf, message } = body as {
     claudeSessionId?: string;
     weekOf: string;
     message: string;
-    mode?: "legacy" | "wizard";
   };
 
   const encoder = new TextEncoder();
@@ -29,7 +28,6 @@ export async function POST(request: Request) {
           claudeSessionId,
           userMessage: message,
           weekOf,
-          mode,
         })) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         }

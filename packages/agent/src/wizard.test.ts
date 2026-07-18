@@ -37,31 +37,20 @@ const _newEvents: StreamEvent[] = [
 ];
 void _newEvents;
 
-// `mode` is optional on runPlanningTurn's parameter object.
-const _legacyParams: Parameters<typeof runPlanningTurn>[0] = {
+// runPlanningTurn's parameter object: claudeSessionId?/userMessage/weekOf.
+const _params: Parameters<typeof runPlanningTurn>[0] = {
   userMessage: "x",
   weekOf: "2026-07-13",
 };
-const _wizardParams: Parameters<typeof runPlanningTurn>[0] = {
-  userMessage: "x",
-  weekOf: "2026-07-13",
-  mode: "wizard",
-};
-void _legacyParams;
-void _wizardParams;
+void _params;
 
-describe("runPlanningTurn mode defaulting", () => {
-  it("is callable without a mode and returns an async generator (defaults to legacy)", () => {
+describe("runPlanningTurn", () => {
+  it("is callable and returns an async generator", () => {
     // Creating the generator does NOT execute its body (no Claude SDK call)
     // until the first .next() — so this never touches the live API.
-    const gen = runPlanningTurn({ userMessage: "plan my week", weekOf: "2026-07-13" });
+    const gen = runPlanningTurn({ userMessage: "PHASE:OPTIONS\n...", weekOf: "2026-07-13" });
     expect(typeof gen[Symbol.asyncIterator]).toBe("function");
     expect(typeof gen.next).toBe("function");
-  });
-
-  it("accepts an explicit wizard mode", () => {
-    const gen = runPlanningTurn({ userMessage: "PHASE:OPTIONS\n...", weekOf: "2026-07-13", mode: "wizard" });
-    expect(typeof gen[Symbol.asyncIterator]).toBe("function");
   });
 });
 

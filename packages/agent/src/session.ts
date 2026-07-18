@@ -1,6 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { createMealPlannerServer } from "./server.js";
-import { MEAL_PLANNER_SYSTEM_PROMPT } from "./prompt.js";
 import { WIZARD_PLANNER_SYSTEM_PROMPT } from "./prompt-wizard.js";
 import type {
   MealOptionsPayload,
@@ -25,39 +24,6 @@ export interface ProposedSide {
   reasoning?: string;
   ingredients?: { name: string; quantity: number; unit: string; category?: string }[];
   baseIngredient?: string;
-}
-
-export interface ProposedMeal {
-  day: string;
-  mealType: string;
-  recipeId: string;
-  recipeName: string;
-  complexity: string;
-  reasoning: string;
-  adaptations?: ProposedAdaptation[];
-  sides?: ProposedSide[];
-}
-
-export interface ComplexityMix {
-  staple: number;
-  standard: number;
-  involved: number;
-}
-
-export interface CookTimeEntry {
-  day: string;
-  minutes: number;
-}
-
-export interface ShoppingHighlight {
-  ingredient: string;
-  days: string[];
-  buyNote: string;
-}
-
-export interface SwapCandidate {
-  name: string;
-  complexity: string;
 }
 
 export interface ProposedExtra {
@@ -103,39 +69,6 @@ export interface ProposedSuggestion {
   item?: ProposedStaple;
 }
 
-export interface MealProposal {
-  meals: ProposedMeal[];
-  extras?: ProposedExtra[];
-  complexityMix?: ComplexityMix;
-  proteinRotation?: string[];
-  cuisineVariety?: string[];
-  cookTimes?: CookTimeEntry[];
-  shoppingHighlights?: ShoppingHighlight[];
-  unusedRecipes?: SwapCandidate[];
-  groceryStaples?: ProposedStaple[];
-  carryoverItems?: ProposedCarryover[];
-  suggestions?: ProposedSuggestion[];
-}
-
-export interface AlternativeMeal {
-  recipeId: string;
-  recipeName: string;
-  complexity: string;
-  reasoning: string;
-  adaptations?: ProposedAdaptation[];
-  sides?: ProposedSide[];
-}
-
-export interface SlotAlternatives {
-  day: string;
-  mealType: string;
-  alternatives: AlternativeMeal[];
-}
-
-export interface MealAlternativesPayload {
-  slots: SlotAlternatives[];
-}
-
 export type StreamEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolUseId: string }
@@ -143,8 +76,6 @@ export type StreamEvent =
   | { type: "tool_complete"; toolUseId: string; toolName: string; durationMs?: number; isError?: boolean }
   | { type: "tool_result"; toolName: string; summary: string; durationMs?: number }
   | { type: "message_complete"; text: string }
-  | { type: "meal_proposal"; proposal: MealProposal }
-  | { type: "meal_alternatives"; alternatives: MealAlternativesPayload }
   | { type: "meal_options"; payload: MealOptionsPayload }
   | { type: "plan_draft"; payload: PlanDraftPayload }
   | { type: "week_roundout"; payload: WeekRoundoutPayload }
@@ -158,24 +89,18 @@ export async function* runPlanningTurn(params: {
   claudeSessionId?: string;
   userMessage: string;
   weekOf: string;
-  mode?: "legacy" | "wizard";
 }): AsyncGenerator<StreamEvent> {
-  const { claudeSessionId, userMessage, weekOf, mode = "legacy" } = params;
+  const { claudeSessionId, userMessage } = params;
 
   const mcpServer = createMealPlannerServer();
 
-  // In wizard mode the client sends self-contained PHASE messages that must
-  // reach the model verbatim (the phase prefix drives routing), so never
-  // prepend the legacy intro. Legacy mode is byte-identical to before.
-  const prompt =
-    mode === "wizard"
-      ? userMessage
-      : claudeSessionId
-        ? userMessage
-        : `I'd like to plan meals for the week of ${weekOf}. ${userMessage}`;
+  // The wizard client sends self-contained PHASE messages that must reach the
+  // model verbatim (the phase prefix drives routing), so the prompt is the raw
+  // user message and never a prepended intro.
+  const prompt = userMessage;
 
   const options = {
-    systemPrompt: mode === "wizard" ? WIZARD_PLANNER_SYSTEM_PROMPT : MEAL_PLANNER_SYSTEM_PROMPT,
+    systemPrompt: WIZARD_PLANNER_SYSTEM_PROMPT,
     tools: [] as string[],
     mcpServers: { "meal-planner-db": mcpServer },
     allowedTools: ["mcp__meal-planner-db__*"],
@@ -309,21 +234,9 @@ export async function* runPlanningTurn(params: {
             return;
           }
 
-          // Check for present_meal_plan / present_alternatives tool calls in the message
+          // Intercept the wizard present tools — forward each tool input as a
+          // StreamEvent and close the session after presentation.
           for (const block of msg.message.content) {
-            if (block.type === "tool_use" && block.name === "mcp__meal-planner-db__present_meal_plan") {
-              const input = block.input as MealProposal;
-              yield { type: "meal_proposal", proposal: input };
-              planPresented = true;
-            }
-            if (block.type === "tool_use" && block.name === "mcp__meal-planner-db__present_alternatives") {
-              const input = block.input as MealAlternativesPayload;
-              yield { type: "meal_alternatives", alternatives: input };
-              planPresented = true;
-            }
-            // Wizard present tools — same intercept-and-close flow. These only
-            // fire in wizard mode (the legacy prompt never calls them), so the
-            // legacy path stays byte-identical.
             if (block.type === "tool_use" && block.name === "mcp__meal-planner-db__present_meal_options") {
               yield { type: "meal_options", payload: block.input as MealOptionsPayload };
               planPresented = true;

@@ -4,13 +4,10 @@ import { buildAssistantPrompt } from "./assistant-prompt.js";
 import { allTools } from "./tools.js";
 
 /** Planner-only tools the general assistant must never invoke. `save_meal_plan`
- *  would write a meals-only session over a legitimately saved week, and the two
- *  present_* proposal tools have no rendering path on the assistant surface (they
- *  would silently vanish). Enforce an explicit allowlist rather than a wildcard. */
+ *  would write a meals-only session over a legitimately saved week. Enforce an
+ *  explicit allowlist rather than a wildcard. */
 const ASSISTANT_EXCLUDED_TOOLS = new Set([
   "save_meal_plan",
-  "present_meal_plan",
-  "present_alternatives",
 ]);
 
 /** Every meal-planner-db tool the assistant is allowed to call — the full tool
