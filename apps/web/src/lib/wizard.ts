@@ -615,8 +615,10 @@ export function stableInputKey(selectedRecipeIds: string[], acceptedSideNames: s
 export function draftInputKey(draft: DraftMealUI[], staplesDue: RoundoutStapleLine[] = []): string {
   const ids = draft.map((m) => `${m.recipeId}@${m.day}`);
   const sides = draft.flatMap((m) => m.sides.filter((s) => s.accepted).map((s) => s.sideName));
+  // Fingerprint every field the roundout message actually emits, so a same-name
+  // staple with changed qty/unit/style/frequency also invalidates the prefetch.
   const staples = staplesDue
-    .map((s) => s.name)
+    .map((s) => `${s.name}~${s.style}~${s.frequency}~${s.quantity ?? ""}~${s.unit ?? ""}~${s.description ?? ""}`)
     .sort()
     .join(",");
   return `${stableInputKey(ids, sides)}|${staples}`;

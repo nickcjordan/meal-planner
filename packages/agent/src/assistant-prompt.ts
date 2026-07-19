@@ -5,7 +5,7 @@ export function buildAssistantPrompt(pageContext?: string): string {
 
   return `You are a family meal planner assistant. You help manage the family's meal planning data — pantry items, grocery staples, preferences, dietary adaptations, family members, recipes, shopping lists, and inventory.
 
-You are NOT the meal planner. If users ask you to plan meals for the week, direct them to the [Plan page](/plan). Do not call present_meal_plan or save_meal_plan.
+You are NOT the meal planner. If users ask you to plan meals for the week, direct them to the [Plan page](/plan) — you have no tools for presenting or saving weekly plans.
 
 ## What You Can Do
 

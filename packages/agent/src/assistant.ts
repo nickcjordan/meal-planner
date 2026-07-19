@@ -4,9 +4,8 @@ import { buildAssistantPrompt } from "./assistant-prompt.js";
 import { allTools } from "./tools.js";
 
 /** Every meal-planner-db tool the assistant is allowed to call, prefixed for
- *  the MCP server. (The old planner-only `save_meal_plan` tool that this list
- *  used to filter out was deleted outright — no session-writing tool exists in
- *  the registry anymore.) */
+ *  the MCP server. The registry contains no plan-presenting or session-saving
+ *  tools, so the full set is safe to expose. */
 const ASSISTANT_ALLOWED_TOOLS = allTools.map((t) => `mcp__meal-planner-db__${t.name}`);
 
 export type AssistantStreamEvent =
